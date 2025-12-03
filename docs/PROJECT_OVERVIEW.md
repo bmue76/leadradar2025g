@@ -1,122 +1,119 @@
-# LeadRadar2025g – Projektübersicht
+# LeadRadar2025g – PROJECT_OVERVIEW
 
-SaaS-Lösung zur **digitalen Leaderfassung für Messen**.  
-Backend-first Ansatz: Zuerst eine saubere, skalierbare Backend/API-Basis, danach Mobile-App(s).
+## 1. Kontext & Ziel
 
----
+LeadRadar2025g ist die Backend-zentrierte Neuumsetzung des LeadRadar-SaaS:
+Eine Lösung zur digitalen Leaderfassung auf Messen.  
+In dieser Phase steht der Aufbau eines sauberen, modularen Backends im Fokus, das später von einer Web-Admin-UI und einer Mobile-App genutzt wird.
 
-## 1. Projekt-Steckbrief
+Dieses Repository bildet die technische Basis für:
 
-- **Projektname:** LeadRadar2025g  
-- **Ziel:** Digitale Erfassung, Verwaltung und Auswertung von Leads auf Messen  
-- **Architektur:**  
-  - Backend: Next.js 15 (App Router) als API-first Backend im Ordner `backend/`  
-  - ORM: Prisma 7 (PostgreSQL, Konfiguration über `prisma.config.ts`)  
-  - DB: PostgreSQL (Railway / Supabase, noch einzurichten)  
-  - Mobile: React Native / Expo (kommt in späteren Teilprojekten)  
-- **Hosting-Zielbild:**  
-  - Backend/API: Vercel  
-  - Datenbank: Railway oder Supabase  
+- Formular-Definition & -Verwaltung (Forms)
+- Erfassung von Leads auf Messen (Leads)
+- Multi-Tenant-Fähigkeit (Mandanten / Kunden)
+- Einfache, später erweiterbare Authentifizierung
 
 ---
 
-## 2. Struktur & Code-Basis (Stand nach Teilprojekt 1.0)
+## 2. Repository-Struktur (High-Level)
 
-Vereinfachte Top-Level-Struktur:
-
-- `/backend` – Next.js 15 App Router Backend (API-first)
-  - `app/`
-    - `api/health/route.ts` – allgemeiner Health-Check
-    - `api/health/db/route.ts` – DB-Health-Check (Prisma-gestützt)
-  - `lib/`
-    - `prisma.ts` – Prisma-Client-Singleton mit PostgreSQL-Adapter (`PrismaPg` + `pg`-Pool)
-  - `prisma/`
-    - `schema.prisma` – Prisma-Schema (Generator + Datasource, noch ohne Models)
-  - `prisma.config.ts` – Prisma 7 Config (Datasource-URL via `env('DATABASE_URL')`)
-  - `.env` – lokale Umgebungsvariablen (z. B. `DATABASE_URL=...`)
-- `/docs`
-  - `PROJECT_OVERVIEW.md` – dieses Dokument
-  - `teilprojekt-1.0-backend-foundation.md` – Doku zu Teilprojekt 1.0
+- `backend/`
+  - Next.js 15 (App Router, TypeScript)
+  - API-Routen (REST-artig, JSON)
+  - Prisma 7 (PostgreSQL, neuer PrismaPg-Adapter)
+  - Health-Checks, Auth-/Tenant-Basics
+- `backend/docs/`
+  - Projektübersicht (`PROJECT_OVERVIEW.md`)
+  - Teilprojekt-Dokumente (`teilprojekt-*.md`)
 
 ---
 
-## 3. Teilprojekte (Überblick)
+## 3. Technische Basis Backend – Stand nach Teilprojekt 1.0 (Backend Foundation)
 
-Geplante/angelegte Teilprojekte (laufend ergänzen):
+**Ziele von 1.0**
 
-- **Teilprojekt 1.0 – Backend Foundation**
-  - Next.js 15 Backend im Ordner `backend/`
-  - Health-Check-Endpunkte
-  - Prisma-Basissetup (Prisma 7, PostgreSQL, Adapter, Client-Singleton)
-- **Teilprojekt 1.x – Backend-Features**
-  - Datenmodellierung (Forms, Leads, Users, Tenants, …)
-  - Admin-API-Endpunkte
-  - Auth / Multi-Tenant-Konzept
-- **Teilprojekt 2.x – Admin-UI**
-  - Web-Admin für Form-Management, Lead-Übersicht, Exporte
-- **Teilprojekt 3.x – Mobile-App**
-  - React Native / Expo App
-  - API-Integration, Offline/Sync, QR/Visitenkarten-Scan
+- Minimal lauffähiges Backend aufsetzen.
+- Health-Checks für Service und Datenbank.
+- Prisma 7 mit PostgreSQL-Adapter einrichten.
 
-(Diese Liste wird Schritt für Schritt konkretisiert und mit eigenen Teilprojekt-Dokumenten verlinkt.)
+**Umsetzung**
 
----
+- Next.js 15 App im Ordner `backend/`:
+  - App Router
+  - TypeScript
+  - Kein Tailwind
+  - Kein `src/`-Ordner (Dateien direkt unter `app/`, `lib/`, `prisma/` etc.)
 
-## 4. Stand nach Teilprojekt 1.0 – Backend Foundation
+- Health-Endpoints:
+  - `GET /api/health`
+    - Antwort: JSON mit `status: "ok"`, `service: "leadradar-backend"`, `timestamp`
+  - `GET /api/health/db`
+    - Führt einen einfachen DB-Check via Prisma/SQL aus (z. B. `SELECT 1`).
+    - Meldet DB-Status (ok / Fehler).
 
-### 4.1 Technische Ergebnisse
-
-- **Next.js 15 Backend aufgesetzt**  
-  - `backend/` enthält eine lauffähige Next.js-App (App Router, TypeScript aktiviert).
-  - `npm run dev` startet lokal unter `http://localhost:3000`.
-
-- **Health-Check-Endpunkte**  
-  - `GET /api/health`  
-    - Liefert JSON mit:
-      - `status: "ok"`
-      - `service: "leadradar-backend"`
-      - `timestamp: <ISO-String>`
-  - `GET /api/health/db`  
-    - Verwendet Prisma mit PostgreSQL-Adapter (`PrismaPg`) und `pg`-Pool.
-    - Antwort:
-      - Bei funktionierender DB: `status: "ok"`, `db: "reachable"`.
-      - Bei fehlender/Platzhalter-DB: `status: "error"`, `db: "unreachable"`, Fehlertext (z. B. `Can't reach database server at HOST`).
-
-- **Prisma-Basis (Prisma 7, PostgreSQL)**  
+- Prisma 7-Basis:
   - `prisma/schema.prisma`
-    - Enthält:
-      - `generator client { provider = "prisma-client-js" }`
-      - `datasource db { provider = "postgresql" }`
-    - **Keine** `url`-Konfiguration im Schema (Prisma-7-konform).
+    - `generator client { provider = "prisma-client-js" }`
+    - `datasource db { provider = "postgresql" }`
   - `prisma.config.ts`
-    - Definiert:
-      - `schema: 'prisma/schema.prisma'`
-      - `datasource: { url: env('DATABASE_URL') }`
-  - `.env`
-    - Enthält ein Template für `DATABASE_URL`, z. B.:  
-      `DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/leadradar2025g?schema=public"`
+    - Konfiguration der `datasource` mit `env('DATABASE_URL')`
   - `lib/prisma.ts`
-    - Prisma-Client-Singleton mit:
-      - `Pool` aus `pg` (Connection-String aus `process.env.DATABASE_URL`)
-      - `PrismaPg`-Adapter (`adapter`-Konfiguration für Prisma 7)
-      - `log: ['query', 'error', 'warn']`
-  - `npx prisma generate`
-    - Läuft fehlerfrei durch, Prisma Client ist generiert.
+    - Prisma-Client-Singleton mit `PrismaPg`-Adapter und `pg`-Connection-Pool.
 
-### 4.2 Offene Punkte & Nächste Schritte (Ausblick)
+- DB-Anbindung:
+  - PostgreSQL als lokale Entwicklungsdatenbank.
+  - `DATABASE_URL` in `.env` (z. B. `postgresql://postgres:PASS@localhost:5432/leadradar2025g?schema=public`).
 
-- Konkrete DB-Instanz auf Railway oder Supabase anlegen und `DATABASE_URL` in `.env` aktualisieren.
-- Datenmodell für LeadRadar (Forms, FormFields, Leads, User, Tenant/Account) entwerfen und in Prisma-Models gießen.
-- Migrationsstrategie (Prisma Migrate) und Naming Conventions definieren.
-- Auth-Strategie (z. B. `x-user-id` Header, Multi-Tenant-Konzept) festlegen.
-- Deployment-Setup für Vercel (Backend) vorbereiten (Umgebungsvariablen, Build-Settings).
+**Ergebnis von 1.0**
+
+- Backend startet mit `npm run dev`.
+- Health-Checks funktionieren.
+- Prisma 7 ist korrekt konfiguriert und kann mit der Datenbank sprechen.
 
 ---
 
-## 5. Changelog (Auszug)
+## 4. Stand nach Teilprojekt 1.1 – Auth & Tenant Handling
 
-- **[Teilprojekt 1.0] Backend Foundation**  
-  - Next.js 15 Backend im Ordner `backend/` initialisiert.  
-  - Health-Check-Endpoints (`/api/health`, `/api/health/db`) implementiert.  
-  - Prisma 7 Basis-Konfiguration (Schema + `prisma.config.ts`, `.env`, `lib/prisma.ts` mit PostgreSQL-Adapter) eingerichtet.  
-  - Prisma Client erfolgreich generiert.
+### 4.1 Zielsetzung
+
+- Einführung einer minimalen Multi-Tenant-Struktur:
+  - `Tenant` (Mandant / Kunde)
+  - `User` (Benutzer, gehört zu genau einem Tenant)
+- Einfache, Header-basierte „Fake-Auth“:
+  - `x-user-id` als Platzhalter für „eingeloggter Benutzer“
+- Zentrales Utility:
+  - `requireAuthContext(req)` lädt `user` + `tenant` und liefert einen klar typisierten Kontext.
+- Seed-Daten:
+  - Ein Demo-Tenant und ein Demo-User für lokale Tests.
+
+---
+
+### 4.2 Datenmodell (Prisma)
+
+**Datei:** `backend/prisma/schema.prisma`
+
+Relevante Models:
+
+```prisma
+model Tenant {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slug      String   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+
+  tenantId  Int
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

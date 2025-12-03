@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// backend/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -8,4 +8,25 @@ datasource db {
   provider = "postgresql"
 }
 
-// Models folgen in späteren Teilprojekten (Forms, Leads, Users, Tenants, ...)
+model Tenant {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slug      String   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+
+  tenantId  Int
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
