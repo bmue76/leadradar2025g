@@ -1,230 +1,102 @@
-# LeadRadar2025g – Projektübersicht
+# LeadRadar2025g – Projektübersicht (Backend-first)
 
 SaaS-Lösung zur digitalen Leaderfassung auf Messen.  
-Backend-first Ansatz: Zuerst ein stabiles Multi-Tenant-Backend, danach Admin-UI und Mobile-App.
+In diesem Repo wird das **Backend + Admin-UI** mit Next.js (App Router) und Prisma aufgebaut.  
+Mobile-App folgt später und spricht die Public-API an.
 
 ---
 
-## Teilprojekt 1.0 – Backend Foundation
+## 0. Ziel & Scope (Backend / Admin-UI)
 
-**Ziel**
-
-- Technische Basis für das Backend von LeadRadar2025g schaffen:
-  - Next.js 15 (App Router, TypeScript) im Ordner `backend/`.
-  - Health-Check-Endpoints.
-  - Prisma 7 mit PostgreSQL + Driver Adapter.
-  - Erste Doku-Struktur in `docs/`.
-
-**Umsetzung**
-
-- Neues Next.js-Projekt im Ordner `backend/` erstellt.
-- Health-Endpoints:
-  - `GET /api/health` → einfacher Service-Health-Check.
-  - `GET /api/health/db` → DB-Health via Prisma (`SELECT 1`).
-- Prisma 7 eingerichtet:
-  - `backend/prisma/schema.prisma` mit Basis-Modellen `Tenant` und `User`.
-  - `backend/prisma.config.ts` mit `DATABASE_URL`-Konfiguration.
-  - `backend/lib/prisma.ts` mit `PrismaPg` + `pg`-Pool als Singleton.
-- Einfaches Seed-Skript für einen Demo-Tenant und einen Demo-User angelegt.
-
-**Ergebnis**
-
-- Backend-Grundgerüst läuft lokal.
-- DB-Anbindung ist stabil.
-- Projektstruktur und Doku-Basis stehen.
+- Saubere, API-first Backend-Basis für:
+  - Formularverwaltung (Forms, FormFields)
+  - Lead-Erfassung (Leads)
+- Multi-Tenant-fähig (Tenant, User, x-user-id Header)
+- Schlanke Admin-UI für:
+  - Übersicht & Detail von Formularen
+  - später: Lead-Übersichten, CSV-Exports, Form-Editor etc.
+- Mobile-App soll später primär die Public-API verwenden (kein direktes Prisma im Mobile).
 
 ---
 
-## Teilprojekt 1.1 – Auth & Tenant Handling (Kurzüberblick)
+## 1. Technischer Stack
 
-**Ziel**
-
-- Basis-Auth- und Tenant-Handling im Backend, um später Admin-UI und Mobile sauber anzubinden.
-
-**Umsetzung (High Level)**
-
-- Auth-Logik in `backend/lib/auth.ts` aufgebaut (z. B. anhand eines User-Kontexts / Header).
-- Hilfsfunktionen, um den aktuellen `User` und `Tenant` aus der DB zu laden.
-- Endpoint `GET /api/me` implementiert:
-  - Liefert Basisinformationen zum eingeloggten User inkl. Tenant.
-- Logging und Error-Handling für Auth/Me-Endpoint ergänzt.
-
-**Ergebnis**
-
-- Es existiert ein klarer Einstiegspunkt für „Current User + Tenant“.
-- Folge-Teilprojekte können darauf aufbauen (Admin-UI, Form- und Lead-APIs, Mobile).
+- **Framework:** Next.js 15/16 (App Router, TypeScript, Server Components)
+- **Runtime:** Node.js (Dev: `npm run dev`)
+- **Datenbank:** PostgreSQL (Prisma ORM)
+- **ORM:** Prisma 7
+- **Auth / Tenant:**
+  - `requireAuthContext(req)` mit `x-user-id`-Header
+  - Demo-User via Seed (`x-user-id: 1`)
+- **API-Stil:** REST-artige JSON-Endpunkte für Admin & Public
 
 ---
 
-## Teilprojekt 1.2 – Datenmodell & Prisma-Schema (Forms & Leads Core)
+## 2. Datenmodell (Forms & Leads – Kurzüberblick)
 
-**Ziel**
+Die Kernmodelle sind in `prisma/schema.prisma` definiert:
 
-- Fachliches Kern-Datenmodell für Formulare & Leads modellieren.
-- Multi-Tenant-fähige Prisma-Modelle für:
-  - `Form` (Formular-Kopf)
-  - `FormField` (Felder eines Formulars)
-  - `Lead` (erfasste Leads mit JSON-Werten)
-- Sinnvolle Enums definieren und migration-ready machen.
-- Seed um ein Demo-Formular + Demo-Lead erweitern.
-- Erste gemeinsame Typen für API-/UI-Contracts anlegen.
+- `Tenant` – Mandant / Kunde
+- `User` – Benutzer, gehört zu einem Tenant
+- `Form` – Formular (Meta: Name, Status, Slug, Version, Beschreibung, …)
+- `FormField` – Feld eines Formulars (Label, Key, Typ, Required, Order, …)
+- `Lead` – erfasster Messe-Lead mit JSON-Werten pro Feld
 
----
+Dazu existieren DTOs in `backend/lib/types/forms.ts`, z. B.:
 
-### Modelle & Enums
-
-**Enums**
-
-- `FormStatus`
-  - `DRAFT`
-  - `ACTIVE`
-  - `ARCHIVED`
-
-- `FormFieldType`
-  - `TEXT`
-  - `TEXTAREA`
-  - `EMAIL`
-  - `PHONE`
-  - `NUMBER`
-  - `SELECT`
-  - `MULTISELECT`
-  - `CHECKBOX`
-  - `RADIO`
-  - `DATE`
-  - `DATETIME`
-  - `TIME`
-  - `NOTE`
-
-**Modelle**
-
-1. `Tenant` (erweitert)
-
-- Bestehendes Modell um Relationen ergänzt:
-  - `forms     Form[]`
-  - `formFields FormField[]`
-  - `leads     Lead[]`
-
-2. `User` (erweitert)
-
-- Bestehendes Modell um Relationen ergänzt:
-  - `formsCreated Form[] @relation("FormsCreated")`
-  - `formsUpdated Form[] @relation("FormsUpdated")`
-  - `leadsCreated Lead[] @relation("LeadsCreated")`
-
-3. `Form`
-
-- Kern-Felder:
-  - `tenantId` → `Tenant`
-  - `name`, `description?`
-  - `status` (`FormStatus`, Default `DRAFT`)
-  - `slug?` (unique pro Tenant via `@@unique([tenantId, slug])`)
-  - `version` (Default `1`)
-  - `createdByUserId?`, `updatedByUserId?` → `User`
-  - `createdAt`, `updatedAt`
-- Relationen:
-  - `tenant  Tenant`
-  - `fields  FormField[]`
-  - `leads   Lead[]`
-- Indizes:
-  - `@@index([tenantId])`
-  - `@@unique([tenantId, slug])`
-
-4. `FormField`
-
-- Kern-Felder:
-  - `tenantId` → `Tenant`
-  - `formId`   → `Form`
-  - `key` (technische ID, z. B. `firstName`)
-  - `label` (z. B. „Vorname“)
-  - `type` (`FormFieldType`)
-  - `placeholder?`, `helpText?`
-  - `required` (Default `false`)
-  - `order` (Sortierung, Default `0`)
-  - `config?` (`Json` – z. B. Optionen für SELECT/MULTISELECT)
-  - `isActive` (Default `true`)
-  - `createdAt`, `updatedAt`
-- Relationen:
-  - `tenant Tenant`
-  - `form   Form`
-- Constraints:
-  - `@@index([tenantId])`
-  - `@@index([formId])`
-  - `@@unique([formId, key])` (kein doppelter Key innerhalb eines Formulars)
-
-5. `Lead`
-
-- Kern-Felder:
-  - `tenantId` → `Tenant`
-  - `formId`   → `Form`
-  - `values` (`Json`) – Map von `FormField.key` → Wert
-  - `source?` (z. B. `"mobile-app"`, `"web-form"`, `"import"`)
-  - `createdByUserId?` → `User`
-  - `createdAt`, `updatedAt`
-- Relationen:
-  - `tenant Tenant`
-  - `form   Form`
-  - `createdByUser? User`
-- Indizes:
-  - `@@index([tenantId])`
-  - `@@index([formId])`
-  - `@@index([createdAt])`
+- `FormDTO`
+- `FormFieldDTO`
+- `LeadDTO`
+- `CreateLeadRequest` (Request-Payload für Lead-Erfassung)
 
 ---
 
-### Migration & Seed
+## 3. API-Übersicht (Stand nach Teilprojekt 1.3)
 
-- Migration:
-  - Befehl: `npx prisma migrate dev --name init_forms_leads_core`
-  - Legt alle neuen Tabellen, Enums und Indizes an.
-- Seed (`backend/prisma/seed.cjs`):
-  - Nutzt den gleichen Driver Adapter wie das Backend:
-    - `PrismaPg` + `pg` + `DATABASE_URL` aus `.env`
-  - Legt/aktualisiert:
-    - `Tenant` mit `slug = "demo-tenant"`
-    - `User` mit `email = "demo@leadradar.local"`
-    - Demo-Formular `Demo Lead-Formular` mit `slug = "demo-lead-form"`
-      - Felder: `firstName`, `lastName`, `email`, `company`, `phone`, `notes`, `newsletterOptIn`
-    - Einen Beispiel-Lead mit `values`-JSON:
+### 3.1 Admin-API (authentifiziert, Tenant-scope)
 
-      ```json
-      {
-        "firstName": "Beat",
-        "lastName": "Müller",
-        "email": "beat@example.com",
-        "company": "PopUp Piazza",
-        "phone": "+41 79 000 00 00",
-        "notes": "Demo-Lead aus Seed-Skript.",
-        "newsletterOptIn": true
-      }
-      ```
+Alle Admin-Routen erwarten einen gültigen `x-user-id`-Header.  
+Für Demo-Zwecke: `x-user-id: 1`.
 
----
+- `GET /api/admin/forms`
+  - Liefert paginierte Liste der Forms des Tenants.
+  - Typisch: `{ items: FormDTO[], page, limit, total }`.
 
-### API-/Typen-Vorbereitung
+- `GET /api/admin/forms/:id`
+  - Liefert ein Formular inklusive Feldern.
+  - Struktur: `{ form: FormDTO, fields: FormFieldDTO[] }`.
 
-- Datei: `backend/lib/types/forms.ts`
-- Enthält:
-  - `FormStatus` & `FormFieldType` (von `Prisma.FormStatus` / `Prisma.FormFieldType` abgeleitet).
-  - `FormFieldDTO` – DTO für Felddefinitionen.
-  - `FormDTO` – Formular mit Feldern, API-/UI-freundlich, `createdAt`/`updatedAt` als ISO-Strings.
-  - `LeadValue` & `LeadValueMap` – Wertetypen und Key→Value-Map für `values`.
-  - `LeadDTO` – Lead-Darstellung auf API-/UI-Ebene.
-  - `CreateLeadRequest` – Request-Shape für `POST /api/leads` (folgt in späterem Teilprojekt).
+- `GET /api/admin/forms/:id/leads`
+  - Liefert die Leads zu einem Formular (Struktur siehe Teilprojekt 1.3).
+
+Weitere Admin-Routen (Create/Update/Delete) sind geplant, aber noch nicht Teil von 2.1.
+
+### 3.2 Public-API (ohne klassische Auth)
+
+- `GET /api/forms/:id`
+  - Liefert ein einzelnes Formular für die Mobile-/Public-Nutzung.
+  - Genutzte DTOs: `FormDTO`, `FormFieldDTO`.
+
+- `POST /api/leads`
+  - Erfasst einen Lead für ein Formular.
+  - Erwartet `CreateLeadRequest` im Body.
+  - Validierung gegen FormFields (Pflichtfelder, Typen, etc.).
 
 ---
 
-### Ergebnis nach Teilprojekt 1.2
+## 4. Admin-UI – Routing & Struktur (Stand nach Teilprojekt 2.1)
 
-- Das **Kern-Datenmodell** für Formulare und Leads steht und ist **multi-tenant-fähig**.
-- Prisma-Schema ist migration-ready, Migration wurde ausgeführt.
-- Seed-Skript erzeugt einen konsistenten Demo-Tenant inkl. Demo-User, Demo-Formular und Demo-Lead.
-- Erste zentrale Typen für künftige API-Routen (Admin-UI & Mobile) sind vorbereitet.
+Die Admin-UI lebt im App-Router unter einer eigenen Route-Group:
 
-**Nächste Schritte (geplant)**
-
-- Teilprojekt 1.3:
-  - API-Routen für Forms & Leads (CRUD / Listing) auf Basis des neuen Schemas.
-  - Nutzung der Typen aus `lib/types/forms.ts`.
-- Teilprojekt 2.x/3.x:
-  - Admin-UI für Formular-Management.
-  - Mobile-App-Flows für Leaderfassung auf Basis des Form-Schemas.
+```text
+backend/app/
+  (admin)/
+    admin/
+      layout.tsx        # Admin-Layout mit Header & Navigation
+      page.tsx          # /admin – Dashboard / Intro
+      forms/
+        loading.tsx     # Loading-State für /admin/forms
+        page.tsx        # /admin/forms – Form-Liste
+        [id]/
+          loading.tsx   # Loading-State für /admin/forms/[id]
+          page.tsx      # /admin/forms/[id] – Form-Detail
