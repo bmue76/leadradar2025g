@@ -8,6 +8,36 @@ datasource db {
   provider = "postgresql"
 }
 
+/*
+  Enums
+*/
+
+enum FormStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum FormFieldType {
+  TEXT
+  TEXTAREA
+  EMAIL
+  PHONE
+  NUMBER
+  SELECT
+  MULTISELECT
+  CHECKBOX
+  RADIO
+  DATE
+  DATETIME
+  TIME
+  NOTE
+}
+
+/*
+  Core Multi-Tenant Models
+*/
+
 model Tenant {
   id        Int      @id @default(autoincrement())
   name      String
@@ -17,6 +47,9 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   users     User[]
+  forms     Form[]
+  formFields FormField[]
+  leads     Lead[]
 }
 
 model User {
@@ -29,4 +62,94 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  formsCreated Form[] @relation("FormsCreated")
+  formsUpdated Form[] @relation("FormsUpdated")
+  leadsCreated Lead[] @relation("LeadsCreated")
+}
+
+/*
+  Forms & Leads Core
+*/
+
+model Form {
+  id        Int        @id @default(autoincrement())
+  tenantId  Int
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  status      FormStatus @default(DRAFT)
+  slug        String?
+  version     Int        @default(1)
+
+  createdByUserId Int?
+  createdByUser   User?   @relation("FormsCreated", fields: [createdByUserId], references: [id])
+
+  updatedByUserId Int?
+  updatedByUser   User?   @relation("FormsUpdated", fields: [updatedByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fields   FormField[]
+  leads    Lead[]
+
+  @@index([tenantId])
+  @@unique([tenantId, slug])
+}
+
+model FormField {
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  formId Int
+  form   Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  key        String
+  label      String
+  type       FormFieldType
+  placeholder String?
+  helpText    String?
+  required   Boolean @default(false)
+  order      Int     @default(0)
+
+  // JSON-Konfiguration für Feld-spezifische Einstellungen
+  // z. B. options (für SELECT / MULTISELECT / RADIO), Min-/Max-Länge, etc.
+  config   Json?
+
+  isActive Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([formId])
+  @@unique([formId, key])
+}
+
+model Lead {
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  formId Int
+  form   Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // Flexible Antworten-Map basierend auf FormField.key
+  values Json
+
+  // Quelle der Erfassung, z. B. "mobile-app", "web-form", "import"
+  source String?
+
+  createdByUserId Int?
+  createdByUser   User? @relation("LeadsCreated", fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([formId])
+  @@index([createdAt])
 }
