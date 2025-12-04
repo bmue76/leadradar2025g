@@ -1,232 +1,144 @@
-// backend/app/(admin)/admin/forms/[id]/page.tsx
-import Link from "next/link";
-import type { FormDTO, FormFieldDTO } from "@/lib/types/forms";
+// app/(admin)/admin/forms/[id]/page.tsx
 
-type FormDetail = FormDTO & {
-  fields: FormFieldDTO[];
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { FormFieldsTable, type FormField } from './FormFieldsTable';
+
+type FormDetailPageProps = {
+  params: Promise<{
+    id: string;
+  }>;
 };
 
-function mapFormStatus(status: unknown): { label: string; className: string } {
-  const s = String(status);
+type FormDto = {
+  id: number;
+  tenantId: number;
+  name: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
-  switch (s) {
-    case "ACTIVE":
-      return {
-        label: "Aktiv",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      };
-    case "DRAFT":
-      return {
-        label: "Entwurf",
-        className: "border-sky-200 bg-sky-50 text-sky-700",
-      };
-    case "ARCHIVED":
-      return {
-        label: "Archiviert",
-        className: "border-slate-300 bg-slate-100 text-slate-600",
-      };
-    default:
-      return {
-        label: s,
-        className: "border-slate-200 bg-slate-50 text-slate-600",
-      };
-  }
-}
+const BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
-async function fetchForm(id: string): Promise<FormDetail | null> {
-  console.log("[AdminFormDetail] fetchForm id:", id);
-
-  const res = await fetch(
-    `http://localhost:3000/api/admin/forms/${encodeURIComponent(id)}`,
-    {
-      method: "GET",
-      headers: {
-        "x-user-id": "1",
-      },
-      cache: "no-store",
-    }
-  );
-
-  console.log("[AdminFormDetail] response status:", res.status);
+async function fetchForm(id: number): Promise<FormDto | null> {
+  const res = await fetch(`${BASE_URL}/api/admin/forms/${id}`, {
+    headers: {
+      'x-user-id': '1',
+    },
+    cache: 'no-store',
+  });
 
   if (res.status === 404) {
     return null;
   }
 
   if (!res.ok) {
-    let errorBody = "";
-    try {
-      errorBody = await res.text();
-    } catch {
-      // ignore
-    }
     console.error(
-      "[AdminFormDetail] error response body:",
-      errorBody || "<no body>"
+      'Fehler beim Laden des Formulars',
+      res.status,
+      await res.text(),
     );
-    throw new Error(`Failed to load form (${res.status})`);
+    throw new Error('Fehler beim Laden des Formulars');
   }
 
-  const json = (await res.json()) as {
-    form?: FormDTO;
-    fields?: FormFieldDTO[];
-  };
-
-  console.log(
-    "[AdminFormDetail] response json keys:",
-    Object.keys(json)
-  );
-
-  if (!json.form) {
-    return null;
-  }
-
-  return {
-    ...json.form,
-    fields: json.fields ?? [],
-  };
+  return (await res.json()) as FormDto;
 }
 
-type FormDetailPageProps = {
-  // Next 16: params ist ein Promise und muss awaited werden
-  params: Promise<{
-    id: string;
-  }>;
-};
+async function fetchFormFields(id: number): Promise<FormField[]> {
+  const res = await fetch(`${BASE_URL}/api/admin/forms/${id}/fields`, {
+    headers: {
+      'x-user-id': '1',
+    },
+    cache: 'no-store',
+  });
+
+  if (res.status === 404) {
+    // Formular nicht gefunden → leere Liste, tatsächliche Behandlung oben
+    return [];
+  }
+
+  if (!res.ok) {
+    console.error(
+      'Fehler beim Laden der Formularfelder',
+      res.status,
+      await res.text(),
+    );
+    throw new Error('Fehler beim Laden der Formularfelder');
+  }
+
+  return (await res.json()) as FormField[];
+}
+
+function formatStatus(status: string) {
+  switch (status) {
+    case 'DRAFT':
+      return 'Entwurf';
+    case 'ACTIVE':
+      return 'Aktiv';
+    case 'ARCHIVED':
+      return 'Archiviert';
+    default:
+      return status;
+  }
+}
 
 export default async function FormDetailPage({
   params,
 }: FormDetailPageProps) {
-  const { id } = await params;
-  console.log("[AdminFormDetail] resolved id:", id);
+  const { id: rawId } = await params;
+  const id = Number(rawId);
 
-  let form: FormDetail | null = null;
-
-  try {
-    form = await fetchForm(id);
-  } catch (error) {
-    console.error(error);
-    return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Formular</h1>
-        <p className="text-sm text-red-600">
-          Fehler beim Laden des Formulars. Bitte versuche es erneut oder gehe
-          zurück zur Formular-Übersicht.
-        </p>
-        <p className="text-sm">
-          <Link href="/admin/forms" className="underline">
-            Zurück zur Formular-Liste
-          </Link>
-        </p>
-      </section>
-    );
+  if (!Number.isInteger(id) || id <= 0) {
+    notFound();
   }
+
+  const [form, fields] = await Promise.all([
+    fetchForm(id),
+    fetchFormFields(id),
+  ]);
 
   if (!form) {
-    return (
-      <section className="space-y-4">
-        <h1 className="text-2xl font-semibold">Formular</h1>
-        <p className="text-sm text-slate-600">
-          Das angeforderte Formular wurde nicht gefunden.
-        </p>
-        <p className="text-sm">
-          <Link href="/admin/forms" className="underline">
-            Zurück zur Formular-Liste
-          </Link>
-        </p>
-      </section>
-    );
+    notFound();
   }
 
-  const fields = form.fields ?? [];
-  const status = mapFormStatus(form.status);
-
   return (
-    <section className="space-y-6">
-      {/* Header */}
-      <header className="space-y-2">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">{form.name}</h1>
-            <p className="text-xs text-slate-500">
-              Formular-ID: {form.id} · Tenant-ID: {form.tenantId}
-            </p>
-          </div>
-          <span
-            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-wide ${status.className}`}
-          >
-            {status.label.toUpperCase()}
-          </span>
-        </div>
-
-        {form.description && (
-          <p className="text-sm text-slate-600">{form.description}</p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Link href="/admin/forms" className="underline">
-            ← Zurück zur Formular-Liste
-          </Link>
-
-          <a
-            href={`/api/admin/forms/${form.id}/leads`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium hover:bg-slate-50"
-          >
-            Leads anzeigen (API)
-          </a>
-        </div>
-      </header>
-
-      {/* Felder */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Felder</h2>
-
-        {!fields.length ? (
-          <p className="text-sm text-slate-600">
-            Für dieses Formular sind derzeit keine Felder definiert.
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">
+            Formular: {form.name}
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            ID {form.id} · Status:{' '}
+            <span className="font-medium">{formatStatus(form.status)}</span>
           </p>
-        ) : (
-          <div className="overflow-x-auto rounded border bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Order</th>
-                  <th className="px-3 py-2">Label</th>
-                  <th className="px-3 py-2">Key</th>
-                  <th className="px-3 py-2">Typ</th>
-                  <th className="px-3 py-2">Pflicht</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {fields.map((field) => (
-                  <tr key={field.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 text-slate-500">
-                      {field.order ?? "-"}
-                    </td>
-                    <td className="px-3 py-2">{field.label}</td>
-                    <td className="px-3 py-2 text-slate-500">
-                      {field.key ?? "-"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600">
-                      {String(field.type)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {field.required ? "Ja" : "Nein"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {form.description && (
+            <p className="mt-1 text-sm text-gray-500">{form.description}</p>
+          )}
+        </div>
 
-        <p className="text-xs text-slate-400">
-          Hinweis: Die Felder sind in diesem Teilprojekt nur lesbar. CRUD folgt
-          in einem späteren Schritt.
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/admin/forms`}
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            ← Zurück zur Formularübersicht
+          </Link>
+          <Link
+            href={`/admin/leads?formId=${form.id}`}
+            className="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            Leads anzeigen
+          </Link>
+        </div>
+      </div>
+
+      <section className="space-y-3">
+        <FormFieldsTable formId={form.id} fields={fields} />
       </section>
-    </section>
+    </div>
   );
 }

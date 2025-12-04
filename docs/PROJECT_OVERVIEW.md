@@ -1,102 +1,256 @@
-# LeadRadar2025g – Projektübersicht (Backend-first)
+# LeadRadar2025g – Projektübersicht
 
 SaaS-Lösung zur digitalen Leaderfassung auf Messen.  
-In diesem Repo wird das **Backend + Admin-UI** mit Next.js (App Router) und Prisma aufgebaut.  
-Mobile-App folgt später und spricht die Public-API an.
+Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQL, später Admin-UI und Mobile-App.
 
 ---
 
-## 0. Ziel & Scope (Backend / Admin-UI)
+## Architektur & Tech-Stack (Kurzüberblick)
 
-- Saubere, API-first Backend-Basis für:
-  - Formularverwaltung (Forms, FormFields)
-  - Lead-Erfassung (Leads)
-- Multi-Tenant-fähig (Tenant, User, x-user-id Header)
-- Schlanke Admin-UI für:
-  - Übersicht & Detail von Formularen
-  - später: Lead-Übersichten, CSV-Exports, Form-Editor etc.
-- Mobile-App soll später primär die Public-API verwenden (kein direktes Prisma im Mobile).
-
----
-
-## 1. Technischer Stack
-
-- **Framework:** Next.js 15/16 (App Router, TypeScript, Server Components)
-- **Runtime:** Node.js (Dev: `npm run dev`)
-- **Datenbank:** PostgreSQL (Prisma ORM)
-- **ORM:** Prisma 7
-- **Auth / Tenant:**
-  - `requireAuthContext(req)` mit `x-user-id`-Header
-  - Demo-User via Seed (`x-user-id: 1`)
-- **API-Stil:** REST-artige JSON-Endpunkte für Admin & Public
+- **Backend / API**
+  - Next.js 16 App Router im Ordner `backend/`
+  - TypeScript, Edge-/Node-Runtime (je nach Route konfigurierbar)
+  - API-Routen unter `app/api/...`
+- **Datenbank**
+  - PostgreSQL
+  - Prisma 7 als ORM
+- **Multi-Tenancy & Auth**
+  - Tenant-Modell (Mandantenfähigkeit)
+  - `requireAuthContext(req)` mit `x-user-id` Header
+  - Demo-User/Tenant via Seed (z. B. `x-user-id: 1`)
+- **Admin-UI**
+  - Route-Group `(admin)` mit `/admin/...`
+  - Server Components + Client Components (z. B. Tabellen, Dialoge)
+- **Mobile-App (geplant)**
+  - Getrenntes Expo/React Native Projekt (später, Phase 3.x)
 
 ---
 
-## 2. Datenmodell (Forms & Leads – Kurzüberblick)
+## Stand nach Teilprojekt 1.0 – Backend Foundation
 
-Die Kernmodelle sind in `prisma/schema.prisma` definiert:
+**Ziel:** Lauffähige Backend-Basis mit Next.js & Prisma.
 
-- `Tenant` – Mandant / Kunde
-- `User` – Benutzer, gehört zu einem Tenant
-- `Form` – Formular (Meta: Name, Status, Slug, Version, Beschreibung, …)
-- `FormField` – Feld eines Formulars (Label, Key, Typ, Required, Order, …)
-- `Lead` – erfasster Messe-Lead mit JSON-Werten pro Feld
+Ergebnis:
 
-Dazu existieren DTOs in `backend/lib/types/forms.ts`, z. B.:
-
-- `FormDTO`
-- `FormFieldDTO`
-- `LeadDTO`
-- `CreateLeadRequest` (Request-Payload für Lead-Erfassung)
+- Next.js-App im Ordner `backend/` aufgesetzt.
+- TypeScript-, ESLint- und Basis-Konfiguration eingerichtet.
+- Prisma 7 mit PostgreSQL angebunden (Schema-Datei, Prisma Client-Generierung).
+- Entwicklungs-Setup unter Windows (VS Code, Git Bash, `npm run dev`) verifiziert.
 
 ---
 
-## 3. API-Übersicht (Stand nach Teilprojekt 1.3)
+## Stand nach Teilprojekt 1.1 – Auth & Tenant Handling
 
-### 3.1 Admin-API (authentifiziert, Tenant-scope)
+**Ziel:** Einfache, aber saubere Auth- und Tenant-Basis.
 
-Alle Admin-Routen erwarten einen gültigen `x-user-id`-Header.  
-Für Demo-Zwecke: `x-user-id: 1`.
+Ergebnis:
 
-- `GET /api/admin/forms`
-  - Liefert paginierte Liste der Forms des Tenants.
-  - Typisch: `{ items: FormDTO[], page, limit, total }`.
-
-- `GET /api/admin/forms/:id`
-  - Liefert ein Formular inklusive Feldern.
-  - Struktur: `{ form: FormDTO, fields: FormFieldDTO[] }`.
-
-- `GET /api/admin/forms/:id/leads`
-  - Liefert die Leads zu einem Formular (Struktur siehe Teilprojekt 1.3).
-
-Weitere Admin-Routen (Create/Update/Delete) sind geplant, aber noch nicht Teil von 2.1.
-
-### 3.2 Public-API (ohne klassische Auth)
-
-- `GET /api/forms/:id`
-  - Liefert ein einzelnes Formular für die Mobile-/Public-Nutzung.
-  - Genutzte DTOs: `FormDTO`, `FormFieldDTO`.
-
-- `POST /api/leads`
-  - Erfasst einen Lead für ein Formular.
-  - Erwartet `CreateLeadRequest` im Body.
-  - Validierung gegen FormFields (Pflichtfelder, Typen, etc.).
+- Modelle:
+  - `Tenant` (Mandant)
+  - `User` (mit `tenantId`-Bezug)
+- Utility:
+  - `requireAuthContext(req)`:
+    - Liest `x-user-id` aus dem Request.
+    - Lädt User + zugehörigen Tenant.
+    - Wirft 401/403 bei ungültigem Kontext.
+- Seed:
+  - Demo-Tenant und Demo-User (z. B. `x-user-id: 1`) angelegt.
+- API:
+  - Test-Endpoint `/api/me` liefert `user` + `tenant` zurück (authentifiziert).
+- Scope:
+  - Alle „Admin“-Routen arbeiten konsequent tenant-scope (kein Cross-Tenant-Zugriff).
 
 ---
 
-## 4. Admin-UI – Routing & Struktur (Stand nach Teilprojekt 2.1)
+## Stand nach Teilprojekt 1.2 – Datenmodell & Prisma-Schema (Forms & Leads Core)
 
-Die Admin-UI lebt im App-Router unter einer eigenen Route-Group:
+**Ziel:** Kern-Datenmodell für Formulare & Leads sauber modellieren.
 
-```text
-backend/app/
-  (admin)/
-    admin/
-      layout.tsx        # Admin-Layout mit Header & Navigation
-      page.tsx          # /admin – Dashboard / Intro
-      forms/
-        loading.tsx     # Loading-State für /admin/forms
-        page.tsx        # /admin/forms – Form-Liste
-        [id]/
-          loading.tsx   # Loading-State für /admin/forms/[id]
-          page.tsx      # /admin/forms/[id] – Form-Detail
+Ergebnis:
+
+- Prisma-Modelle (Kern):
+  - `Form`
+    - Bezug zu `Tenant`
+    - Felder wie `name`, `description`, `status` (`FormStatus`), `slug` o. Ä.
+  - `FormField`
+    - Bezug zu `Tenant` & `Form`
+    - `key`, `label`, `type` (`FormFieldType`), `required`, `placeholder`, `helpText`, `order`, `config`, `isActive`
+  - `Lead`
+    - Bezug zu `Tenant` & `Form`
+    - `values` (JSON), `source`, `createdByUserId`, Timestamps
+- Enums:
+  - `FormStatus` (z. B. `DRAFT`, `ACTIVE`, `ARCHIVED`)
+  - `FormFieldType` (z. B. `TEXT`, `EMAIL`, `PHONE`, `NUMBER`, `TEXTAREA`, `SELECT`, `CHECKBOX`, …)
+- Migration:
+  - Prisma-Migrationen ausgeführt, Schema in der DB verankert.
+- Seed:
+  - Demo-Formulare mit einfachen Feldern und Test-Leads angelegt.
+- Typen/DTOs:
+  - `backend/lib/types/forms.ts` mit:
+    - `FormDto`, `FormFieldDto`, `LeadDto`
+    - `CreateLeadRequest` u. a.
+
+---
+
+## Stand nach Teilprojekt 1.3 – API-Basis & Routing (Forms & Leads)
+
+**Ziel:** Saubere, tenant-scope API für Formular-Verwaltung und Lead-Verarbeitung.
+
+Ergebnis:
+
+- **Admin-API (authentifiziert, tenant-scope)**
+
+  - `GET /api/admin/forms`
+    - Liste aller Formulare eines Tenants.
+  - `POST /api/admin/forms`
+    - Neues Formular anlegen.
+  - `GET /api/admin/forms/[id]`
+    - Formular-Detail (inkl. Feldern) für einen Tenant.
+  - `PATCH /api/admin/forms/[id]`
+    - Formular bearbeiten (z. B. Name, Beschreibung, Status).
+  - `DELETE /api/admin/forms/[id]`
+    - Formular löschen (abhängig von Business-Entscheidungen; aktuell vor allem für Test/Demo).
+  - `GET /api/admin/forms/[id]/leads`
+    - Lead-Liste zu einem Formular (Paginierung/Filter optional).
+
+- **Public-/Mobile-API**
+
+  - `GET /api/forms/[id]/active` oder vergleichbarer Endpoint:
+    - Liefert ein aktives Formular (inkl. Felder) für Mobile-Frontend/Public-Use.
+  - `POST /api/leads`
+    - Legt einen Lead an:
+      - Payload: `{ formId, values: { [fieldKey]: value } }`
+      - Validierung der Felder anhand `FormField.key` + `required`.
+      - Speichert Daten in `Lead.values` (JSON) + Metadaten.
+
+- **Technische Eckpunkte**
+
+  - DTOs für Admin- und Public-API wiederverwendet.
+  - Alle Admin-Routen nutzen `requireAuthContext` und filtern konsequent nach `tenantId`.
+  - Konsistente Fehlerstruktur (z. B. `error`, `message`, optional `details`).
+
+---
+
+## Stand nach Teilprojekt 2.1 – Admin-UI: Forms-CRUD (List & Detail)
+
+**Ziel:** Grundlegende Formular-Verwaltung im Admin-Bereich.
+
+Ergebnis:
+
+- Route-Group `(admin)` mit Einstiegspunkt:
+  - `/admin` – Dashboard/Übersicht.
+- Formularverwaltung:
+
+  - `GET /admin/forms`
+    - Seite zeigt Formularliste (Name, Status, Anzahl Felder/Leads etc.).
+    - Aktionen: „Neues Formular“, „Bearbeiten“, „Löschen“ (je nach Implementierung).
+    - Datenquelle: `GET /api/admin/forms`.
+
+  - `GET /admin/forms/[id]`
+    - Formular-Detail-Seite mit Anzeige von:
+      - Meta-Daten (Name, Beschreibung, Status, Timestamps)
+      - Status-Badge (z. B. DRAFT/ACTIVE/ARCHIVED)
+      - Read-only Liste der zugehörigen `FormField`s (Stand 2.1)
+      - Link zur Lead-Übersicht des Formulars.
+    - Datenquelle: `GET /api/admin/forms/[id]`.
+
+- Tech/UX:
+  - Server Components für Daten-Fetching.
+  - Erste Client-Komponenten für Buttons/Interaktionen.
+  - Fehlermeldungen (404/400) sauber behandelt, z. B. invalid `id` → `notFound()`.
+
+---
+
+## Stand nach Teilprojekt 2.2 – Admin-UI: FormFields-CRUD & Reihenfolge
+
+**Ziel:** Vollständiges Feld-Management je Formular inkl. Reihenfolge-Steuerung.
+
+Ergebnis:
+
+- **Neue Admin-API für FormFields**
+
+  - `GET /api/admin/forms/[id]/fields`
+    - Liefert alle Felder eines Formulars für den aktuellen Tenant.
+    - Sortierung: `order ASC, id ASC`.
+
+  - `POST /api/admin/forms/[id]/fields`
+    - Legt ein neues Feld an.
+    - Pflichtwerte: `label`, `key`, `type`, `required`.
+    - Optionale Werte: `placeholder`, `helpText`, `isActive`.
+    - Backend vergibt `order` automatisch (an das Ende der Liste).
+
+  - `PATCH /api/admin/forms/[id]/fields/[fieldId]`
+    - Partielles Update eines Feldes (CRUD + Aktiv-Status + Reorder).
+    - Unterstützte Payloads (kombinierbar):
+      - Stammdaten-Update: `label`, `key`, `type`, `required`, `placeholder`, `helpText`, `isActive`.
+      - Reihenfolge-Update: `order` (1-basiert).
+    - Bei `order`-Änderung:
+      - Backend ermittelt alle Felder des Formulars und packt die Reihenfolge neu (keine doppelten `order`-Werte).
+
+  - `DELETE /api/admin/forms/[id]/fields/[fieldId]`
+    - Hard Delete des Feldes.
+    - Aktuell: Server löscht den Datensatz, UI packt Order lokal neu.  
+      (Optional: Später serverseitige Kompaktierung der Order-Werte.)
+
+- **UI: Felder-Management auf `/admin/forms/[id]`**
+
+  - Tabelle „Felder“ mit:
+    - Spalten: `Order`, `Label`, `Key`, `Typ`, `Required`, `Aktiv`, Aktionen.
+    - Datenquelle: `GET /api/admin/forms/[id]/fields`.
+  - Aktionen pro Feld:
+    - **Bearbeiten**
+      - Öffnet Modal mit Formular für `label`, `key`, `type`, `required`, `placeholder`, `helpText`, `isActive`.
+      - Speichert via `PATCH /api/admin/forms/[id]/fields/[fieldId]`.
+    - **Löschen**
+      - Confirm-Dialog.
+      - `DELETE /api/admin/forms/[id]/fields/[fieldId]`.
+      - UI aktualisiert lokale Reihenfolge (1..n).
+    - **Reihenfolge**
+      - Pfeile `↑` / `↓`
+        - `PATCH` mit neuer `order`, anschließend Refresh via `GET /api/admin/forms/[id]/fields`.
+      - **Drag & Drop**
+        - Tabellenzeilen sind `draggable`.
+        - Beim Drop wird `PATCH` mit neuer `order` ausgelöst (Ziel-Position), danach Liste frisch vom Server geladen.
+    - **Aktiv/Deaktiv**
+      - Button „Aktivieren/Deaktivieren“ toggelt `isActive` via `PATCH`.
+
+  - Aktionen für das Formular selbst:
+    - Button „+ Neues Feld hinzufügen“:
+      - Öffnet Modal für Anlage eines neuen Feldes.
+      - Nach erfolgreichem `POST` wird das neue Feld in der Tabelle angezeigt.
+
+- **UX & Robustheit**
+
+  - Validierung im Modal:
+    - Pflichtfelder: `label`, `key`, `type`.
+  - Loading/Busy-States:
+    - Save-Button zeigt „Speichere…/Aktualisiere…“.
+    - Delete-/Reorder-/Toggle-Buttons werden während der Operation disabled.
+  - Fehlerszenarien:
+    - Saubere Fehlertexte im Modal (z. B. „Fehler beim Anlegen des Feldes“).
+    - Alerts bei technisch nicht ermittelbarer `formId`.
+  - Drag & Drop:
+    - Visuelles Feedback:
+      - Ziehende Zeile halbtransparent.
+      - Zielzeile mit Rahmen (Ring) hervorgehoben.
+
+---
+
+## Ausblick / Nächste sinnvolle Teilprojekte
+
+- **2.3 – Admin-UI: Leads-Ansicht & Details**
+  - Verbesserung der Lead-Listen-/Detailansicht (Filter, Suche, Pagination).
+  - Besseres Zusammenspiel mit Export-/E-Mail-Flows.
+
+- **2.x – Presets / Form-Vorlagen (optional)**
+  - Speichern & Wiederverwenden von Form-Layouts.
+  - Kategorisierung nach Use Cases (z. B. „Messe-Lead“, „Produktfeedback“).
+
+- **3.x – Mobile-App**
+  - Expo/React Native-App zur Leaderfassung.
+  - Offline-Fähigkeit (lokales Caching, Sync mit Backend).
+  - QR-/Barcode-Scanning, Visitenkarten-Erfassung.
+
+- **4.x – Billing & Abos**
+  - Stripe-Integration für Mandanten.
+  - Abo-Status-basierte Feature-Freischaltungen (z. B. Anzahl Formulare, Leads, Nutzer).
