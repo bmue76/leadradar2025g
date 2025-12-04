@@ -131,6 +131,58 @@ Ergebnis:
 
 ---
 
+
+---
+
+### Schritt 2 – Projektübersicht um Teilprojekt 1.4 ergänzen
+
+**Tool:** VS Code  
+**Ziel:** `PROJECT_OVERVIEW.md` um einen knappen Statusblock für 1.4 erweitern.
+
+**Aktion:**
+
+Öffne die Datei  
+`C:/dev/leadradar2025g/docs/PROJECT_OVERVIEW.md`  
+und füge im Bereich der Backend-Teilprojekte (bei 1.x) einen neuen Block ein, z. B. direkt nach 1.3 / 1.7 – je nach bisheriger Reihenfolge:
+
+```md
+## Teilprojekt 1.4 – Leads: E-Mail-Flows (Danke & Innendienst)
+
+**Status:** abgeschlossen
+
+**Ziel:**  
+Nach der Lead-Erfassung automatisiert E-Mail-Flows auslösen:
+
+- optionale Danke-Mail an den Lead,
+- Innendienst-Benachrichtigung an interne Empfänger.
+
+**Ergebnis:**
+
+- Zentrale Mail-Infrastruktur (`lib/mail.ts`) mit Provider-Switch:
+  - `MAIL_PROVIDER=console` (loggt nur),
+  - `MAIL_PROVIDER=resend` (Versand via Resend-API).
+- Template-Funktionen in `lib/mail-templates.ts`:
+  - `buildThankYouEmail(...)`,
+  - `buildInternalLeadNotification(...)`.
+- Hook `handleLeadCreatedEmailFlows(...)` in `lib/lead-email-flows.ts`, eingebunden in `POST /api/leads`.
+- Feature-Flags & Konfiguration über `.env`:
+  - `LEADS_THANK_YOU_ENABLED`, `LEADS_INTERNAL_NOTIFY_ENABLED`,
+  - `MAIL_INTERNAL_RECIPIENTS`, `MAIL_FROM_DEFAULT`, `MAIL_REPLY_TO_DEFAULT`.
+- Happy-Path-Tests + Flag-Szenarien erfolgreich verifiziert.
+
+---
+
+### Teilprojekt 1.7 – Backend Exports (CSV & Download-API)
+
+- Admin-Export-Endpoint: `GET /api/admin/forms/[id]/leads/export`
+  - CSV-Export aller Leads eines Formulars (optional mit `from`/`to`).
+  - Authentifiziert via `requireAuthContext` + tenant-scope.
+  - CSV: Semikolon-separiert, UTF-8 mit BOM, dynamische Spalten basierend auf FormFields.
+  - Limitierung auf max. 50'000 Leads pro Export (`EXPORT_TOO_LARGE`).
+- Optionaler Tenant-Export (`/api/admin/leads/export`) ist als TODO vorgesehen.
+
+---
+
 ## Stand nach Teilprojekt 2.1 – Admin-UI: Forms-CRUD (List & Detail)
 
 **Ziel:** Grundlegende Formular-Verwaltung im Admin-Bereich.
@@ -235,6 +287,26 @@ Ergebnis:
       - Zielzeile mit Rahmen (Ring) hervorgehoben.
 
 ---
+
+**Tool:** VS Code  
+**Ziel:** Kurzer Status-Eintrag für 2.3 in der Projektübersicht.
+
+**Aktion:**
+
+Öffne:
+
+`C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`
+
+Füge im Bereich **Admin-UI / 2.x** einen Abschnitt zu **2.3** ein, z. B. direkt nach 2.2:
+
+```md
+### 2.3 Admin-UI – Leads-Listen & Export
+
+- Neue Formular-spezifische Leads-Ansicht unter `/admin/forms/[id]/leads`.
+- Anzeige der Leads in einer Tabelle mit Meta-Infos (ID, Datum/Zeit, Quelle) und Basis-Kontaktdaten (Name, E-Mail, Firma) plus Werte-Preview.
+- Pagination über `page`/`limit` und clientseitiger CSV-Export der aktuell angezeigten Leads.
+- Placeholder-Seite `/admin/leads` verhindert 404-Fehler und verweist auf die Formular-spezifische Leads-Ansicht.
+
 
 ## Ausblick / Nächste sinnvolle Teilprojekte
 

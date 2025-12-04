@@ -3,28 +3,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import type { CreateLeadRequest } from '@/lib/types/forms';
+import { handleLeadCreatedEmailFlows } from '@/lib/lead-email-flows';
 
-export const dynamic = 'force-dynamic';
+/**
+ * Hilfsfunktion: Prüft, ob ein Wert als "gefüllt" gilt.
+ * Für Strings: nicht leer nach Trim
+ * Für Arrays: mindestens ein "gefülltes" Element
+ * Für andere Typen: nicht null/undefined
+ */
+function isNonEmptyValue(value: unknown): boolean {
+  if (value == null) return false;
 
-type ErrorCode =
-  | 'VALIDATION_ERROR'
-  | 'NOT_FOUND'
-  | 'INTERNAL_ERROR';
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
 
-function jsonError(
-  message: string,
-  status: number,
-  code: ErrorCode,
-  details?: unknown,
-) {
-  return NextResponse.json(
-    {
-      error: message,
-      code,
-      ...(details ? { details } : {}),
-    },
-    { status },
-  );
+  if (Array.isArray(value)) {
+    return value.some((item) => isNonEmptyValue(item));
+  }
+
+  // Für einfache Cases (Zahlen, Booleans, Objekte) genügt "nicht null"
+  return true;
 }
 
 /**
@@ -32,7 +31,7 @@ function jsonError(
  *
  * Öffentlicher Endpoint zum Anlegen eines Leads.
  *
- * Erwarteter Body (CreateLeadRequest):
+ * Erwarteter Body:
  * {
  *   "formId": 1,
  *   "values": {
@@ -42,143 +41,171 @@ function jsonError(
  *   }
  * }
  *
- * Validierung:
- * - formId > 0
- * - Form existiert und ist ACTIVE
- * - values ist ein Objekt
- * - alle required Felder des Forms haben einen nicht-leeren Wert
- *
- * Response 201:
- * {
- *   "lead": { ...Lead }
- * }
+ * - Validiert formId & values.
+ * - Prüft Pflichtfelder des Formulars.
+ * - Legt den Lead an.
+ * - Triggert danach die E-Mail-Flows (Danke-Mail & Innendienst).
  */
 export async function POST(req: NextRequest) {
+  // 1) Body einlesen
+  let body: CreateLeadRequest | null = null;
+
   try {
-    const body = (await req.json().catch(() => null)) as CreateLeadRequest | null;
-
-    if (!body || typeof body !== 'object') {
-      return jsonError(
-        'Invalid request body: expected JSON object',
-        400,
-        'VALIDATION_ERROR',
-      );
-    }
-
-    const { formId, values } = body as any;
-
-    if (
-      typeof formId !== 'number' ||
-      !Number.isFinite(formId) ||
-      formId <= 0
-    ) {
-      return jsonError(
-        'Invalid formId: must be a positive number',
-        400,
-        'VALIDATION_ERROR',
-      );
-    }
-
-    if (
-      !values ||
-      typeof values !== 'object' ||
-      Array.isArray(values)
-    ) {
-      return jsonError(
-        'Invalid values: must be an object with key-value pairs',
-        400,
-        'VALIDATION_ERROR',
-      );
-    }
-
-    // Nur ACTIVE Forms sind gültige Ziele für Leads
-    const form = await prisma.form.findFirst({
-      where: {
-        id: formId,
-        status: 'ACTIVE' as any,
+    body = (await req.json()) as CreateLeadRequest;
+  } catch {
+    return NextResponse.json(
+      {
+        error: 'Ungültiger JSON-Body.',
+        code: 'INVALID_JSON',
       },
-      select: {
-        id: true,
-        tenantId: true,
+      { status: 400 },
+    );
+  }
+
+  if (!body) {
+    return NextResponse.json(
+      {
+        error: 'Request-Body fehlt.',
+        code: 'MISSING_BODY',
       },
+      { status: 400 },
+    );
+  }
+
+  const formId = Number((body as any).formId);
+  const values = (body as any).values;
+
+  if (!Number.isInteger(formId) || formId <= 0) {
+    return NextResponse.json(
+      {
+        error: 'Ungültige formId.',
+        code: 'INVALID_FORM_ID',
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    return NextResponse.json(
+      {
+        error: 'Ungültige values-Struktur. Erwartet wird ein Objekt.',
+        code: 'INVALID_VALUES',
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // 2) Formular laden
+    const form = await prisma.form.findUnique({
+      where: { id: formId },
     });
 
     if (!form) {
-      return jsonError(
-        'Form not found or inactive',
-        404,
-        'NOT_FOUND',
+      return NextResponse.json(
+        {
+          error: 'Formular nicht gefunden.',
+          code: 'FORM_NOT_FOUND',
+        },
+        { status: 404 },
       );
     }
 
+    // 3) Tenant laden (für spätere E-Mail-Templates)
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: form.tenantId },
+    });
+
+    if (!tenant) {
+      return NextResponse.json(
+        {
+          error: 'Tenant für dieses Formular wurde nicht gefunden.',
+          code: 'TENANT_NOT_FOUND',
+        },
+        { status: 500 },
+      );
+    }
+
+    // 4) Formularfelder laden und Pflichtfelder prüfen
     const formFields = await prisma.formField.findMany({
       where: {
         formId: form.id,
-        isActive: true,
-      },
-      select: {
-        key: true,
-        required: true,
+        // isActive: true,  // optional, falls Flag existiert
       },
       orderBy: {
         order: 'asc',
       },
     });
 
-    // Sanitisierung & Required-Checks
-    const sanitizedValues: Record<string, string | null> = {};
-    const missingRequired: string[] = [];
+    const missingRequiredKeys: string[] = [];
 
     for (const field of formFields) {
-      const rawValue = (values as any)[field.key];
+      if (!field.required) continue;
 
-      if (
-        rawValue === undefined ||
-        rawValue === null ||
-        (typeof rawValue === 'string' && rawValue.trim().length === 0)
-      ) {
-        if (field.required) {
-          missingRequired.push(field.key);
-        }
-        sanitizedValues[field.key] = null;
-        continue;
-      }
+      const rawValue = (values as Record<string, unknown>)[field.key];
 
-      // Alles nach string normalisieren
-      if (typeof rawValue === 'string') {
-        sanitizedValues[field.key] = rawValue;
-      } else {
-        sanitizedValues[field.key] = String(rawValue);
+      if (!isNonEmptyValue(rawValue)) {
+        missingRequiredKeys.push(field.key);
       }
     }
 
-    if (missingRequired.length > 0) {
-      return jsonError(
-        'Missing required fields',
-        422,
-        'VALIDATION_ERROR',
-        { missingFields: missingRequired },
+    if (missingRequiredKeys.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Pflichtfelder fehlen oder sind leer.',
+          code: 'MISSING_REQUIRED_FIELDS',
+          missingFields: missingRequiredKeys,
+        },
+        { status: 400 },
       );
     }
 
-    // Option: zusätzliche Keys in values, die es im Form nicht gibt, werden ignoriert.
-    // (Könnte man später loggen.)
+    // 5) Lead anlegen
+    const now = new Date();
 
     const lead = await prisma.lead.create({
       data: {
         tenantId: form.tenantId,
         formId: form.id,
-        values: sanitizedValues,
+        values: values as any,
+        // source, createdByUserId etc. können später ergänzt werden
+        createdAt: now,
+        updatedAt: now,
       },
     });
 
+    // 6) E-Mail-Flows ausführen (Danke-Mail & Innendienst)
+    //    WICHTIG: Fehler in den E-Mail-Flows dürfen NICHT den Lead-Speicherprozess zerschießen.
+    //    handleLeadCreatedEmailFlows fängt intern bereits Fehler ab;
+    //    wir haben hier zusätzlich ein try/catch als Sicherheitsnetz.
+    try {
+      await handleLeadCreatedEmailFlows({
+        lead,
+        form,
+        tenant,
+      });
+    } catch (err) {
+      console.error('[api/leads] Unerwarteter Fehler in handleLeadCreatedEmailFlows:', err);
+    }
+
+    // 7) Response
     return NextResponse.json(
-      { lead },
+      {
+        id: lead.id,
+        formId: lead.formId,
+        createdAt: lead.createdAt,
+      },
       { status: 201 },
     );
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Error in POST /api/leads', error);
-    return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
+  } catch (err) {
+    console.error('[api/leads] Unerwarteter Serverfehler:', err);
+
+    return NextResponse.json(
+      {
+        error: 'Interner Serverfehler bei der Lead-Erstellung.',
+        code: 'INTERNAL_ERROR',
+      },
+      { status: 500 },
+    );
   }
 }
