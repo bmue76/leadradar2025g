@@ -1,235 +1,493 @@
-// app/(admin)/admin/forms/[id]/FormBuilderWorkspace.tsx
 'use client';
 
-import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import type { FormDTO, FormFieldDTO } from '@/lib/types/forms';
 
-type FormFieldLite = {
+/**
+ * Leichter Feld-Typ für den Builder:
+ * - passt zu dem, was page.tsx aktuell übergibt
+ * - erlaubt zusätzlich optionale Properties aus FormFieldDTO
+ */
+type FormFieldLike = {
   id: number;
   key: string;
-  label: string;
+  label: string | null;
   type: string;
   required: boolean;
   placeholder: string | null;
   helpText: string | null;
+  formId?: number;
+  order?: number | null;
+  isActive?: boolean | null;
 };
 
-interface FormBuilderWorkspaceProps {
-  formName: string;
-  fields: FormFieldLite[];
-}
+type FieldDraft = {
+  label: string;
+  placeholder: string;
+  helpText: string;
+  required: boolean;
+  isActive: boolean;
+};
 
-/**
- * Basis-Formbuilder:
- * - links: Feldliste + Details zum aktiven Feld (read-only)
- * - rechts: Formular-Vorschau mit typabhängigen Controls
- *
- * 2.6: Nur Anzeige / Workspace-Gefühl, noch keine neue CRUD-Logik.
- */
-export default function FormBuilderWorkspace({
+type FormBuilderWorkspaceProps = {
+  /** Optional: kompletter Form-Datensatz (neu, für mehr Kontext) */
+  form?: FormDTO;
+  /** Optional: Formularname direkt (für Backwards-Kompatibilität) */
+  formName?: string;
+  /**
+   * Für Rückwärtskompatibilität:
+   * - ältere Versionen haben evtl. `fields` benutzt (leichter Typ)
+   * - neuere `initialFields` (voller DTO-Typ)
+   */
+  fields?: FormFieldLike[];
+  initialFields?: FormFieldDTO[];
+};
+
+function FormBuilderWorkspaceInner({
+  form,
   formName,
   fields,
+  initialFields,
 }: FormBuilderWorkspaceProps) {
-  const [activeFieldId, setActiveFieldId] = React.useState<number | null>(
-    fields.length > 0 ? fields[0]!.id : null,
+  const params = useParams<{ id: string }>();
+  const formIdFromRoute = params?.id;
+
+  // Anzeigename des Formulars bestimmen
+  const formDisplayName =
+    form?.name ?? formName ?? (form ? `#${form.id}` : 'Unbenanntes Formular');
+
+  // Basis-Feldliste bestimmen (egal ob Prop `fields` oder `initialFields`)
+  const baseFields: FormFieldLike[] = useMemo(
+    () => [
+      ...((fields ?? (initialFields as unknown as FormFieldLike[]) ?? []) ||
+        []),
+    ],
+    [fields, initialFields],
+  );
+
+  // Nach `order` sortieren, falls vorhanden
+  const sortedFields = useMemo(
+    () =>
+      [...baseFields].sort((a, b) => {
+        const ao = a.order ?? 0;
+        const bo = b.order ?? 0;
+        return ao - bo;
+      }),
+    [baseFields],
+  );
+
+  const [fieldList, setFieldList] = useState<FormFieldLike[]>(sortedFields);
+  const [activeFieldId, setActiveFieldId] = useState<number | null>(
+    sortedFields.length > 0 ? sortedFields[0].id : null,
   );
 
   const activeField =
-    fields.find((f) => f.id === activeFieldId) ?? (fields[0] ?? null);
+    fieldList.find((field) => field.id === activeFieldId) ?? null;
+
+  // Lokaler Draft-State für die Properties des aktiven Feldes
+  const [draft, setDraft] = useState<FieldDraft | null>(null);
+
+  // Save-Status
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Immer wenn sich das aktive Feld ändert, Draft aus dessen Werten neu aufbauen
+  useEffect(() => {
+    if (!activeField) {
+      setDraft(null);
+      return;
+    }
+
+    setDraft({
+      label: activeField.label ?? '',
+      placeholder: activeField.placeholder ?? '',
+      helpText: activeField.helpText ?? '',
+      required: !!activeField.required,
+      // Standard: wenn isActive nicht gesetzt -> true
+      isActive: activeField.isActive !== false,
+    });
+    setSaveError(null);
+    setSaveSuccess(false);
+  }, [activeField]);
+
+  // Dirty-Flag: gibt es Unterschiede zwischen Draft & aktuellem Feld?
+  const isDirty =
+    !!activeField &&
+    !!draft &&
+    (
+      (activeField.label ?? '') !== draft.label ||
+      (activeField.placeholder ?? '') !== draft.placeholder ||
+      (activeField.helpText ?? '') !== draft.helpText ||
+      !!activeField.required !== draft.required ||
+      (activeField.isActive !== false) !== draft.isActive
+    );
+
+  async function handleSave() {
+    if (!activeField || !draft) return;
+    if (!isDirty) return; // nichts zu tun
+
+    if (!formIdFromRoute) {
+      setSaveError('Formular-ID konnte nicht aus der URL gelesen werden.');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      const payload = {
+        label: draft.label.trim() === '' ? null : draft.label.trim(),
+        placeholder:
+          draft.placeholder.trim() === ''
+            ? null
+            : draft.placeholder.trim(),
+        helpText:
+          draft.helpText.trim() === '' ? null : draft.helpText.trim(),
+        required: draft.required,
+        isActive: draft.isActive,
+      };
+
+      const res = await fetch(
+        `/api/admin/forms/${formIdFromRoute}/fields/${activeField.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': '1', // Admin-Context (siehe requireAuthContext)
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (!res.ok) {
+        let message = 'Speichern fehlgeschlagen.';
+        try {
+          const data = await res.json();
+          if (data?.error) {
+            message =
+              typeof data.error === 'string'
+                ? data.error
+                : JSON.stringify(data.error);
+          }
+        } catch {
+          // ignore JSON-Parsing-Fehler
+        }
+        setSaveError(message);
+        return;
+      }
+
+      // Lokale Feldliste auf Basis des Drafts aktualisieren
+      setFieldList((prev) =>
+        prev.map((field) =>
+          field.id === activeField.id
+            ? {
+                ...field,
+                label: payload.label ?? '',
+                placeholder: payload.placeholder ?? '',
+                helpText: payload.helpText ?? '',
+                required: payload.required,
+                isActive: payload.isActive,
+              }
+            : field,
+        ),
+      );
+
+      setSaveSuccess(true);
+      // kleinen Auto-Reset für den "Gespeichert"-Hint
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (error) {
+      console.error(error);
+      setSaveError('Unerwarteter Fehler beim Speichern.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      {/* Linke Spalte – Feldliste & aktives Feld */}
-      <div className="space-y-4 rounded-md border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Felder im Formular</h2>
-          <span className="text-xs text-muted-foreground">
-            {fields.length} Feld{fields.length === 1 ? '' : 'er'}
-          </span>
-        </div>
+    <section className="space-y-4">
+      {/* kleiner Hinweis, in welchem Formular wir uns befinden */}
+      <header>
+        <p className="text-xs text-muted-foreground">
+          Formbuilder-Workspace für Formular{' '}
+          <span className="font-medium">{formDisplayName}</span>
+        </p>
+      </header>
 
-        {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Dieses Formular hat noch keine Felder. Über die Feldtabelle unten
-            kannst du neue Felder anlegen. Sie erscheinen dann auch hier im
-            Builder.
-          </p>
-        ) : (
-          <>
-            <div className="max-h-64 space-y-1 overflow-auto border-b pb-2">
-              {fields.map((field) => {
-                const isActive = field.id === activeField?.id;
-                return (
-                  <button
-                    key={field.id}
-                    type="button"
-                    onClick={() => setActiveFieldId(field.id)}
-                    className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted'
-                    }`}
-                  >
-                    <span className="truncate">
-                      {field.label || field.key || `Feld #${field.id}`}
-                    </span>
-                    <span
-                      className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase ${
-                        isActive
-                          ? 'bg-primary-foreground/20'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {field.type}
-                    </span>
-                  </button>
-                );
-              })}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        {/* LINKE SPALTE: aktuell nur Feldliste (später globale Settings möglich) */}
+        <div className="space-y-4">
+          {/* Feldliste */}
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                Felder ({fieldList.length})
+              </h2>
             </div>
 
-            {activeField && (
-              <div className="space-y-2 pt-1 text-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">
-                    Aktives Feld:{' '}
-                    <span className="font-semibold">
-                      {activeField.label || activeField.key}
-                    </span>
-                  </h3>
-                  {activeField.required && (
-                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-                      Pflichtfeld
-                    </span>
-                  )}
-                </div>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <div>
-                    <dt className="font-medium text-foreground">Key</dt>
-                    <dd className="truncate">
-                      {activeField.key || <span className="opacity-60">–</span>}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-medium text-foreground">Typ</dt>
-                    <dd>{activeField.type}</dd>
-                  </div>
-                  <div className="col-span-2">
-                    <dt className="font-medium text-foreground">
-                      Placeholder
-                    </dt>
-                    <dd>
-                      {activeField.placeholder || (
-                        <span className="opacity-60">–</span>
-                      )}
-                    </dd>
-                  </div>
-                  <div className="col-span-2">
-                    <dt className="font-medium text-foreground">Hilfetext</dt>
-                    <dd>
-                      {activeField.helpText || (
-                        <span className="opacity-60">–</span>
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Hinweis: In 2.6 sind diese Angaben nur lesbar. Die eigentliche
-                  Feldbearbeitung findet weiterhin in der Tabelle unten statt
-                  und wird in späteren Teilprojekten in den Builder verlegt.
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+            {fieldList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Für dieses Formular sind derzeit noch keine Felder definiert.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {fieldList.map((field) => {
+                  const isSelected = field.id === activeFieldId;
 
-      {/* Rechte Spalte – Formular-Vorschau */}
-      <div className="space-y-4 rounded-md border bg-card p-4">
-        <div>
-          <h2 className="text-base font-semibold">Formular-Vorschau</h2>
-          <p className="text-xs text-muted-foreground">
-            So könnte das Formular &bdquo;{formName}&ldquo; für die Messe-
-            Erfassung aussehen. Diese Vorschau ist aktuell statisch und dient
-            als Orientierung.
-          </p>
+                  return (
+                    <li key={field.id}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveFieldId(field.id)}
+                        className={[
+                          'flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition',
+                          isSelected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:bg-muted',
+                          field.isActive === false ? 'opacity-60' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {field.label || field.key}
+                          </span>
+                          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            {field.type}
+                            {field.required ? ' · Pflichtfeld' : ''}
+                            {field.isActive === false ? ' · inaktiv' : ''}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* Platzhalter für spätere globale Einstellungen (Form-/CD-Config) */}
         </div>
 
-        {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Noch keine Felder vorhanden – die Vorschau wird angezeigt, sobald du
-            Felder angelegt hast.
-          </p>
-        ) : (
-          <form className="space-y-3">
-            {fields.map((field) => {
-              const type = String(field.type).toLowerCase();
+        {/* RECHTE SPALTE: Preview + Properties-Panel */}
+        <div className="space-y-4">
+          {/* Vorschau */}
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Vorschau (Tablet – vereinfachte Darstellung)
+            </h2>
 
-              const label =
-                field.label || field.key || `Feld #${field.id.toString()}`;
+            {fieldList.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Noch keine Felder vorhanden – bitte zuerst Felder anlegen.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {fieldList
+                  .filter((field) => field.isActive !== false)
+                  .map((field) => {
+                    const isSelected = field.id === activeFieldId;
+                    return (
+                      <button
+                        key={field.id}
+                        type="button"
+                        onClick={() => setActiveFieldId(field.id)}
+                        className={[
+                          'block w-full rounded-md border px-3 py-2 text-left transition',
+                          isSelected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:bg-muted/80',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-muted-foreground">
+                            {field.label || field.key}
+                            {field.required && (
+                              <span className="text-destructive"> *</span>
+                            )}
+                          </div>
+                          <div className="h-9 rounded-md border bg-muted/40" />
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
 
-              const common = (
-                <>
-                  <label className="mb-1 block text-xs font-medium text-foreground">
-                    {label}
-                    {field.required && (
-                      <span className="ml-1 text-red-500">*</span>
-                    )}
-                  </label>
-                  {field.helpText && (
-                    <p className="mb-1 text-[11px] text-muted-foreground">
-                      {field.helpText}
-                    </p>
-                  )}
-                </>
-              );
+          {/* Properties-Panel – an die Vorschau angedockt */}
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                Feld-Eigenschaften
+              </h2>
+            </div>
 
-              if (type === 'textarea' || type === 'multiline') {
-                return (
-                  <div key={field.id} className="space-y-1">
-                    {common}
-                    <textarea
-                      className="w-full rounded border bg-background px-2 py-1 text-sm"
-                      placeholder={field.placeholder || ''}
-                      rows={4}
-                      disabled
-                    />
-                  </div>
-                );
-              }
-
-              if (type === 'checkbox') {
-                return (
-                  <div
-                    key={field.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input type="checkbox" disabled />
-                    <div className="flex flex-col">
-                      <span>{label}</span>
-                      {field.helpText && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {field.helpText}
-                        </span>
-                      )}
+            {!activeField || !draft ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Kein Feld ausgewählt – bitte in der Vorschau oder links in der
+                Liste ein Feld anklicken.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-4 text-sm">
+                {/* Read-only Basisinfos */}
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Feld-Typ
+                    </div>
+                    <div className="mt-1 rounded-md border bg-muted px-2 py-1 text-xs">
+                      {activeField.type ?? '–'}
                     </div>
                   </div>
-                );
-              }
 
-              // Default: Text-/E-Mail-/Nummer-/Datum-Feld
-              return (
-                <div key={field.id} className="space-y-1">
-                  {common}
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Key
+                    </div>
+                    <div className="mt-1 rounded-md border bg-muted px-2 py-1 font-mono text-xs">
+                      {activeField.key ?? '–'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Label */}
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Label
+                  </label>
                   <input
-                    className="w-full rounded border bg-background px-2 py-1 text-sm"
-                    placeholder={field.placeholder || ''}
-                    disabled
+                    type="text"
+                    className="mt-1 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    value={draft.label}
+                    onChange={(e) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, label: e.target.value } : prev,
+                      )
+                    }
+                    placeholder="z.B. Vorname"
                   />
                 </div>
-              );
-            })}
-          </form>
-        )}
+
+                {/* Placeholder */}
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Placeholder
+                  </label>
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    value={draft.placeholder}
+                    onChange={(e) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, placeholder: e.target.value } : prev,
+                      )
+                    }
+                    placeholder="Optionaler Platzhalter-Text"
+                  />
+                </div>
+
+                {/* Help-Text */}
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Help-Text
+                  </label>
+                  <textarea
+                    className="mt-1 w-full rounded-md border bg-background px-2 py-1 text-sm"
+                    rows={3}
+                    value={draft.helpText}
+                    onChange={(e) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, helpText: e.target.value } : prev,
+                      )
+                    }
+                    placeholder="Kurze Erklärung oder Hinweis zum Feld (optional)"
+                  />
+                </div>
+
+                {/* Toggles: Required & Aktiv */}
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={draft.required}
+                      onChange={(e) =>
+                        setDraft((prev) =>
+                          prev
+                            ? { ...prev, required: e.target.checked }
+                            : prev,
+                        )
+                      }
+                    />
+                    <span className="select-none">Pflichtfeld</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={draft.isActive}
+                      onChange={(e) =>
+                        setDraft((prev) =>
+                          prev
+                            ? { ...prev, isActive: e.target.checked }
+                            : prev,
+                        )
+                      }
+                    />
+                    <span className="select-none">Feld ist aktiv</span>
+                  </label>
+                </div>
+
+                {/* Save-Button & Status */}
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving || !isDirty}
+                    className="inline-flex items-center rounded-md border border-primary bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm disabled:opacity-60"
+                  >
+                    {isSaving
+                      ? 'Speichern…'
+                      : isDirty
+                        ? 'Änderungen speichern'
+                        : 'Keine Änderungen'}
+                  </button>
+                  {saveSuccess && (
+                    <span className="text-xs text-emerald-600">
+                      Gespeichert.
+                    </span>
+                  )}
+                </div>
+
+                {/* Hinweis zu unsaved/clean */}
+                <p className="text-xs text-muted-foreground">
+                  {isDirty
+                    ? 'Es gibt ungespeicherte Änderungen an diesem Feld.'
+                    : 'Keine ungespeicherten Änderungen.'}
+                </p>
+
+                {saveError && (
+                  <p className="pt-1 text-xs text-destructive">
+                    {saveError}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
+
+// Named Export (falls irgendwo so importiert wird)
+export { FormBuilderWorkspaceInner as FormBuilderWorkspace };
+// Default Export (für vorhandenen `import FormBuilderWorkspace'`)
+export default FormBuilderWorkspaceInner;
