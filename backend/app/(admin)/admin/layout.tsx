@@ -1,6 +1,11 @@
-// backend/app/(admin)/admin/layout.tsx
-import type { ReactNode } from "react";
-import Link from "next/link";
+// app/(admin)/admin/layout.tsx
+import type { ReactNode } from 'react';
+import type { Metadata } from 'next';
+import { AdminSidebar } from './AdminSidebar';
+
+export const metadata: Metadata = {
+  title: 'LeadRadar Admin',
+};
 
 type AdminLayoutProps = {
   children: ReactNode;
@@ -8,30 +13,23 @@ type AdminLayoutProps = {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-slate-500">
-              LeadRadar
-            </span>
-            <span className="text-sm text-slate-400">Admin</span>
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      {/* 
+        Flex-Layout:
+        - Mobile: flex-col (Sidebar oben, Content darunter)
+        - Desktop (md+): flex-row (Sidebar links, Content rechts)
+      */}
+      <div className="flex min-h-screen md:h-screen flex-col md:flex-row">
+        {/* Sidebar mit Navigation */}
+        <AdminSidebar />
+
+        {/* Haupt-Content – eigener Scroll-Container */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6">
+            {children}
           </div>
-
-          <nav className="flex gap-4 text-sm">
-            <Link href="/admin" className="hover:underline">
-              Dashboard
-            </Link>
-            <Link href="/admin/forms" className="hover:underline">
-              Formulare
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto flex-1 w-full max-w-5xl px-4 py-6">
-        {children}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
