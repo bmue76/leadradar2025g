@@ -275,3 +275,22 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
 - **4.x – Billing & Abos**
   - Stripe-Integration für Mandanten-Abos.
   - Feature-Freischaltungen abhängig vom Abo-Status (Anzahl Formulare, Leads, Nutzer, …).
+
+  ---
+
+  ### Stand nach Teilprojekt 2.6 – FormDetail & Builder fusionieren (Basis)
+
+- `/admin/forms/[id]` ist jetzt der **zentrale Formbuilder-Workspace** für ein Formular.
+- Die Seite kombiniert:
+  - Workspace-Header mit Navigation (Zur Formularliste, Leads anzeigen),
+  - kompakte Meta-Infos (ID, Status, Beschreibung),
+  - einen visuellen **Formbuilder-Bereich** (Feldliste + Vorschau),
+  - sowie die **technische Feldtabelle (Legacy)** für Feld-CRUD & Reihenfolge.
+- `/admin/forms/[id]/builder` existiert nur noch als **Legacy-Redirect** auf `/admin/forms/[id]`.
+- Der Builder liest die Felder aus dem Backend und spiegelt Änderungen aus der Feldtabelle automatisch wider.
+- 2.6 bildet die Basis für künftige Erweiterungen:
+  - 1:1 Tablet-Layout als Standardvorlage,
+  - Properties-Panel im Builder,
+  - Drag & Drop im Layout,
+  - Template-Auswahl für Kunden.
+
