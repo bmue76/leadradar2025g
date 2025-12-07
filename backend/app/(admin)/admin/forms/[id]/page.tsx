@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+
 import FormBuilderWorkspace from './FormBuilderWorkspace';
+import { FormFieldsTable } from './FormFieldsTable';
 import type { FormDTO, FormFieldDTO } from '@/lib/types/forms';
 import { prisma } from '@/lib/prisma';
 
@@ -24,9 +26,7 @@ async function getAdminFormDetail(formId: string): Promise<FormDetailResponse> {
   }
 
   const form = await prisma.form.findUnique({
-    where: {
-      id: idNum,
-    },
+    where: { id: idNum },
     include: {
       fields: {
         orderBy: [
@@ -67,14 +67,24 @@ export default async function AdminFormBuilderPage({ params }: PageProps) {
     notFound();
   }
 
+  const numericFormId =
+    typeof form.id === 'number' ? form.id : Number(form.id ?? NaN);
+
   return (
-    <div className="space-y-6">
-      {/* Zentraler Formbuilder-Workspace:
-          - Header mit Meta
-          - Feldliste links (mit Drag & Drop)
-          - Vorschau & Properties rechts
-      */}
-      <FormBuilderWorkspace form={form} fields={fields} />
+    <div className="space-y-8">
+      {/* Zentraler Formbuilder-Workspace */}
+      <FormBuilderWorkspace initialForm={form} initialFields={fields} />
+
+      {/* Legacy-/Technik-Ansicht darunter */}
+      {Number.isFinite(numericFormId) && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <FormFieldsTable
+            formId={numericFormId}
+            // Typ-Cast, da DTO & Table-Shape leicht abweichen können
+            fields={fields as any}
+          />
+        </section>
+      )}
     </div>
   );
 }

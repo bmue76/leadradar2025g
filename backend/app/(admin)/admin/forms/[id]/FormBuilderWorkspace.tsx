@@ -6,9 +6,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
+  type DragEndEvent,
   closestCenter,
-  type UniqueIdentifier,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -17,7 +16,9 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 
-type FieldId = UniqueIdentifier;
+import FormPreviewTabletLayout from './FormPreviewTabletLayout';
+
+type FieldId = string | number;
 
 type FormLike = {
   id?: number | string;
@@ -50,16 +51,14 @@ interface FormBuilderWorkspaceProps {
 }
 
 /**
- * Hilfsfunktion: Eingehende Roh-Felder in ein konsistentes Shape bringen.
+ * Eingehende Roh-Felder in ein konsistentes Shape bringen.
  */
 function normalizeFields(fieldsInput: unknown): FormFieldLike[] {
   if (!Array.isArray(fieldsInput)) return [];
-
   return fieldsInput.map((raw, index) => {
     const f = raw as any;
     const id: FieldId = (f?.id ?? index) as FieldId;
-    const label: string =
-      f?.label ?? f?.name ?? f?.key ?? `Feld ${index + 1}`;
+    const label: string = f?.label ?? f?.name ?? f?.key ?? `Feld ${index + 1}`;
     const type: string = f?.type ?? f?.fieldType ?? 'text';
     const order: number | null =
       typeof f?.order === 'number' ? f.order : null;
@@ -89,23 +88,27 @@ function sortFields(fields: FormFieldLike[]): FormFieldLike[] {
   return withIndex
     .sort((a, b) => {
       const ao =
-        typeof a.f.order === 'number' ? a.f.order! : Number.MAX_SAFE_INTEGER;
+        typeof a.f.order === 'number'
+          ? (a.f.order as number)
+          : Number.MAX_SAFE_INTEGER;
       const bo =
-        typeof b.f.order === 'number' ? b.f.order! : Number.MAX_SAFE_INTEGER;
+        typeof b.f.order === 'number'
+          ? (b.f.order as number)
+          : Number.MAX_SAFE_INTEGER;
 
       if (ao !== bo) return ao - bo;
 
       const aid =
         typeof a.f.id === 'number'
-          ? a.f.id
+          ? (a.f.id as number)
           : typeof a.f.id === 'string'
-          ? parseInt(a.f.id as string, 10) || 0
+          ? Number.parseInt(a.f.id as string, 10) || 0
           : 0;
       const bid =
         typeof b.f.id === 'number'
-          ? b.f.id
+          ? (b.f.id as number)
           : typeof b.f.id === 'string'
-          ? parseInt(b.f.id as string, 10) || 0
+          ? Number.parseInt(b.f.id as string, 10) || 0
           : 0;
 
       if (aid !== bid) return aid - bid;
@@ -141,7 +144,7 @@ function SortableFieldListItem(props: {
   };
 
   const baseClasses =
-    'group mb-2 flex items-center justify-between rounded-md border px-3 py-2 text-sm shadow-sm';
+    'group mb-2 flex items-center justify-between rounded-md border px-3 py-2 text-xs md:text-sm shadow-sm';
   let className =
     baseClasses +
     ' bg-white border-slate-200 text-slate-800 hover:border-sky-300 hover:bg-slate-50';
@@ -152,7 +155,7 @@ function SortableFieldListItem(props: {
       ' border-sky-500 bg-sky-50 text-slate-900 ring-1 ring-sky-200';
   }
 
-  if (!field.isActive) {
+  if (field.isActive === false) {
     className += ' opacity-60';
   }
 
@@ -161,36 +164,41 @@ function SortableFieldListItem(props: {
   }
 
   return (
-    <li ref={setNodeRef} style={style} className={className}>
+    <div ref={setNodeRef} style={style} className={className}>
       <button
         type="button"
+        className="flex flex-1 flex-col text-left"
         onClick={onClick}
-        className="flex flex-1 flex-col items-start text-left"
       >
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {field.key ?? `key_${String(field.id)}`}
-        </span>
-        <span className="text-sm font-medium text-slate-900">
-          {field.label ?? field.key ?? 'Unbenanntes Feld'}
-        </span>
-        <span className="text-xs text-slate-500">
-          {field.type ?? 'Textfeld'}
-          {field.required && <span className="text-red-500"> *</span>}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium">
+            {field.label ?? field.key ?? 'Unbenanntes Feld'}
+          </span>
+          {field.required && (
+            <span className="text-xs font-semibold text-rose-600">*</span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500">
+          <span className="uppercase tracking-wide">
+            {field.type ?? 'text'}
+          </span>
+          {field.key && (
+            <span className="truncate text-slate-400">({field.key})</span>
+          )}
+        </div>
       </button>
 
-      {/* Drag-Handle – dezent, wird bei Hover klarer */}
+      {/* Drag-Handle */}
       <button
         type="button"
+        className="ml-2 cursor-grab text-slate-300 hover:text-slate-500"
+        aria-label="Feld verschieben"
         {...attributes}
         {...listeners}
-        className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-500 opacity-70 hover:bg-slate-100 group-hover:opacity-100 cursor-grab active:cursor-grabbing"
-        title="Feld verschieben"
-        aria-label="Feld verschieben"
       >
         ⠿
       </button>
-    </li>
+    </div>
   );
 }
 
@@ -198,6 +206,7 @@ export default function FormBuilderWorkspace(
   props: FormBuilderWorkspaceProps,
 ) {
   const form: FormLike = props.form ?? props.initialForm ?? {};
+
   const initialFields = React.useMemo(
     () => normalizeFields(props.fields ?? props.initialFields ?? []),
     [props.fields, props.initialFields],
@@ -205,28 +214,27 @@ export default function FormBuilderWorkspace(
 
   const [fieldsState, setFieldsState] =
     React.useState<FormFieldLike[]>(initialFields);
-  const [activeFieldId, setActiveFieldId] =
-    React.useState<FieldId | null>(null);
+  const [activeFieldId, setActiveFieldId] = React.useState<FieldId | null>(
+    initialFields[0]?.id ?? null,
+  );
+
   const [isOrderDirty, setIsOrderDirty] = React.useState(false);
-
-  // Reihenfolge-Persistenz
   const [isSavingOrder, setIsSavingOrder] = React.useState(false);
-  const [orderSaveError, setOrderSaveError] =
-    React.useState<string | null>(null);
-  const [orderSaveSuccess, setOrderSaveSuccess] =
-    React.useState(false);
+  const [orderSaveError, setOrderSaveError] = React.useState<string | null>(
+    null,
+  );
+  const [orderSaveSuccess, setOrderSaveSuccess] = React.useState(false);
 
-  // Properties-Panel: Draft-State
   const [draftField, setDraftField] =
     React.useState<FormFieldLike | null>(null);
+  const [isDraftDirty, setIsDraftDirty] = React.useState(false);
   const [isSavingField, setIsSavingField] = React.useState(false);
   const [fieldSaveError, setFieldSaveError] = React.useState<string | null>(
     null,
   );
   const [fieldSaveSuccess, setFieldSaveSuccess] = React.useState(false);
-  const [isDraftDirty, setIsDraftDirty] = React.useState(false);
 
-  // Wenn sich die eingehenden Felder ändern (z. B. durch Reload), lokalen State neu setzen.
+  // Server-Felder synchronisieren
   React.useEffect(() => {
     setFieldsState(normalizeFields(props.fields ?? props.initialFields ?? []));
     setIsOrderDirty(false);
@@ -237,7 +245,7 @@ export default function FormBuilderWorkspace(
     [fieldsState],
   );
 
-  // Aktives Feld sicherstellen: Wenn keins gewählt ist oder nicht mehr existiert, erstes Feld setzen.
+  // Aktives Feld sicherstellen
   React.useEffect(() => {
     if (
       sortedFields.length === 0 ||
@@ -249,27 +257,26 @@ export default function FormBuilderWorkspace(
     setActiveFieldId(sortedFields[0].id);
   }, [sortedFields, activeFieldId]);
 
-  const activeField =
+  const activeField: FormFieldLike | null =
     activeFieldId != null
       ? sortedFields.find((f) => f.id === activeFieldId) ?? null
       : null;
 
-  // Draft mit aktivem Feld synchronisieren.
+  // Draft mit aktivem Feld synchronisieren
   React.useEffect(() => {
     if (!activeField) {
       setDraftField(null);
       setIsDraftDirty(false);
       return;
     }
+
     setDraftField({ ...activeField });
     setIsDraftDirty(false);
   }, [activeFieldId, activeField]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // Drag startet erst nach leichter Bewegung
-      },
+      activationConstraint: { distance: 5 },
     }),
   );
 
@@ -285,8 +292,6 @@ export default function FormBuilderWorkspace(
       if (oldIndex === -1 || newIndex === -1) return prev;
 
       const reordered = arrayMove(sortedPrev, oldIndex, newIndex);
-
-      // order nur lokal neu durchzählen – Persistenz folgt über Button.
       const withNewOrder = reordered.map((field, index) => ({
         ...field,
         order: index + 1,
@@ -324,9 +329,13 @@ export default function FormBuilderWorkspace(
       const payload = {
         label: draftField.label ?? '',
         placeholder:
-          draftField.placeholder === '' ? null : draftField.placeholder ?? null,
-      helpText:
-          draftField.helpText === '' ? null : draftField.helpText ?? null,
+          draftField.placeholder === ''
+            ? null
+            : draftField.placeholder ?? null,
+        helpText:
+          draftField.helpText === ''
+            ? null
+            : draftField.helpText ?? null,
         required: !!draftField.required,
         isActive: draftField.isActive !== false,
       };
@@ -350,11 +359,9 @@ export default function FormBuilderWorkspace(
         );
       }
 
-      // Lokalen State aktualisieren
+      // lokalen State aktualisieren
       setFieldsState((prev) =>
-        prev.map((f) =>
-          f.id === draftField.id ? { ...f, ...draftField } : f,
-        ),
+        prev.map((f) => (f.id === draftField.id ? { ...f, ...draftField } : f)),
       );
 
       setIsDraftDirty(false);
@@ -363,7 +370,8 @@ export default function FormBuilderWorkspace(
     } catch (err) {
       console.error(err);
       setFieldSaveError(
-        (err as Error).message ?? 'Unbekannter Fehler beim Speichern.',
+        (err as Error).message ??
+          'Unbekannter Fehler beim Speichern der Feldeigenschaften.',
       );
     } finally {
       setIsSavingField(false);
@@ -379,8 +387,8 @@ export default function FormBuilderWorkspace(
 
     try {
       const formId = encodeURIComponent(String(form.id));
-
       const sorted = sortFields(fieldsState);
+
       const updates = sorted.map((field, index) => ({
         fieldId: field.id,
         order: index + 1,
@@ -411,7 +419,6 @@ export default function FormBuilderWorkspace(
         }),
       );
 
-      // Lokalen State auf den bestätigten Stand setzen
       setFieldsState(
         sorted.map((field, index) => ({
           ...field,
@@ -439,244 +446,203 @@ export default function FormBuilderWorkspace(
   const formStatus = form?.status ?? form?.state ?? '';
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-6">
       {/* Header mit Form-Meta */}
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-900">
-            {formName}
-          </h1>
-          {formDescription && (
-            <p className="mt-1 text-sm text-slate-600">
-              {formDescription}
-            </p>
+      <header className="border-b border-slate-200 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">
+              {formName}
+            </h1>
+            {formDescription && (
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                {formDescription}
+              </p>
+            )}
+          </div>
+          {formStatus && (
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700">
+              {formStatus}
+            </span>
           )}
         </div>
-        {formStatus && (
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-600">
-            {formStatus}
-          </span>
-        )}
       </header>
 
-      {/* Builder-Workspace: Links Feldliste, rechts Vorschau + Properties */}
-      <div className="grid gap-4 md:grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)]">
-        {/* Linke Spalte – Feldliste mit Drag & Drop */}
+      {/* Haupt-Workspace: links Feldliste, rechts Tablet-Vorschau + Properties */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
+        {/* Linke Spalte – Feldliste + Reorder */}
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
+          <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
                 Feldliste
               </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Zieh die Felder über das Handle (⠿), um die Reihenfolge
-                zu ändern.
+              <p className="text-xs text-slate-500">
+                Zieh die Felder über das Handle (⠿), um die Reihenfolge zu
+                ändern.
               </p>
             </div>
-            {isOrderDirty && (
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
-                Reihenfolge geändert (noch nicht gespeichert)
-              </span>
-            )}
           </div>
 
-          <div className="mt-3 max-h-[480px] overflow-y-auto pr-1">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
+          {isOrderDirty && !orderSaveError && !orderSaveSuccess && (
+            <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Reihenfolge geändert – noch nicht gespeichert.
+            </p>
+          )}
+          {orderSaveError && (
+            <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              {orderSaveError}
+            </p>
+          )}
+          {orderSaveSuccess && (
+            <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              Reihenfolge gespeichert.
+            </p>
+          )}
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={sortedFields.map((f) => f.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <SortableContext
-                items={sortedFields.map((f) => f.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <ul>
-                  {sortedFields.map((field) => (
-                    <SortableFieldListItem
-                      key={field.id}
-                      field={field}
-                      isActive={activeFieldId === field.id}
-                      onClick={() => setActiveFieldId(field.id)}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-            </DndContext>
+              {sortedFields.map((field) => (
+                <SortableFieldListItem
+                  key={String(field.id)}
+                  field={field}
+                  isActive={activeFieldId === field.id}
+                  onClick={() => setActiveFieldId(field.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
 
-            {sortedFields.length === 0 && (
-              <p className="mt-2 text-sm text-slate-500">
-                Für dieses Formular sind noch keine Felder definiert.
-              </p>
-            )}
-          </div>
+          {sortedFields.length === 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Für dieses Formular sind noch keine Felder definiert.
+            </p>
+          )}
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="text-xs text-slate-500">
-              {orderSaveError && (
-                <span className="text-red-600">
-                  {orderSaveError}
-                </span>
-              )}
-              {orderSaveSuccess && (
-                <span className="text-emerald-600">
-                  Reihenfolge gespeichert.
-                </span>
-              )}
-              {!orderSaveError &&
-                !orderSaveSuccess &&
-                isOrderDirty && (
-                  <span>
-                    Reihenfolge geändert – noch nicht gespeichert.
-                  </span>
-                )}
-            </div>
-
+          <div className="mt-4 flex flex-col gap-2 text-xs text-slate-500">
             <button
               type="button"
               onClick={handleSaveOrder}
-              disabled={
-                !isOrderDirty || isSavingOrder || !form?.id
-              }
-              className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium ${
-                !isOrderDirty || isSavingOrder || !form?.id
+              disabled={!isOrderDirty || isSavingOrder}
+              className={`inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium ${
+                !isOrderDirty || isSavingOrder
                   ? 'cursor-not-allowed bg-slate-200 text-slate-500'
                   : 'bg-sky-600 text-white hover:bg-sky-700'
               }`}
             >
               {isSavingOrder ? 'Speichere …' : 'Reihenfolge speichern'}
             </button>
+            <span>
+              Hinweis: Beim Speichern wird die aktuelle Reihenfolge in der
+              Datenbank persistiert.
+            </span>
           </div>
-
-          <p className="mt-2 text-xs text-slate-400">
-            Hinweis: Beim Speichern wird die aktuelle Reihenfolge in der
-            Datenbank persistiert.
-          </p>
         </section>
 
-        {/* Rechte Spalte – Vorschau + Properties-Panel */}
-        <section className="flex flex-col gap-4">
-          {/* Vereinfachte Vorschau */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Formular-Vorschau (vereinfachte Ansicht)
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Reihenfolge, Labels und Pflichtfeld-Markierungen werden
-              live aus der Feldliste übernommen.
-            </p>
-
-            <div className="mt-3 space-y-2">
-              {sortedFields.map((field) => {
-                const isPreviewActive = activeFieldId === field.id;
-                const previewBase =
-                  'flex flex-col rounded-md border px-3 py-2 cursor-pointer transition-colors';
-                const previewClass = isPreviewActive
-                  ? previewBase +
-                    ' border-sky-500 bg-sky-50 ring-1 ring-sky-200'
-                  : previewBase +
-                    ' border-slate-200 bg-slate-50 hover:border-sky-300 hover:bg-slate-50';
-
-                return (
-                  <div
-                    key={field.id}
-                    className={previewClass}
-                    onClick={() => setActiveFieldId(field.id)}
-                  >
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      {field.label ?? field.key ?? 'Unbenanntes Feld'}
-                      {field.required && (
-                        <span className="text-red-500"> *</span>
-                      )}
-                    </span>
-                    <span className="mt-1 text-xs text-slate-400">
-                      {field.placeholder ||
-                        `(${field.type ?? 'Textfeld'})`}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {sortedFields.length === 0 && (
+        {/* Rechte Spalte – Tablet-Vorschau + Properties */}
+        <section className="space-y-4">
+          {/* Tablet-Vorschau */}
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Tablet-Vorschau
+                </h2>
                 <p className="text-xs text-slate-500">
-                  Noch keine Vorschau möglich – füge zuerst Felder hinzu.
+                  Grobe Annäherung an das spätere Tablet-/App-Layout. Die
+                  Reihenfolge aus der Feldliste wirkt sich auf die dynamischen
+                  Felder (links) aus, der Kontaktblock (rechts) folgt einer
+                  eigenen Logik.
                 </p>
-              )}
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                Beta
+              </span>
             </div>
+
+            <FormPreviewTabletLayout
+              fields={sortedFields as any}
+              activeFieldId={activeFieldId as any}
+              onFieldClick={(id) => setActiveFieldId(id as FieldId)}
+            />
           </div>
 
           {/* Properties-Panel */}
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2 className="mb-2 text-sm font-semibold text-slate-900">
               Feldeigenschaften
             </h2>
 
             {!activeField && (
-              <p className="mt-2 text-sm text-slate-500">
-                Wähle links ein Feld oder in der Vorschau ein Element
-                aus, um die Eigenschaften zu bearbeiten.
+              <p className="text-sm text-slate-500">
+                Wähle links ein Feld oder ein Element in der Tablet-Vorschau,
+                um die Eigenschaften zu bearbeiten.
               </p>
             )}
 
             {activeField && draftField && (
-              <div className="mt-3 space-y-3">
+              <div className="space-y-3 text-sm">
                 <div className="grid grid-cols-2 gap-3 text-xs text-slate-500">
                   <div>
-                    <span className="font-medium">Typ</span>
-                    <div className="mt-0.5 text-[11px] text-slate-700">
+                    <div className="mb-1 font-medium">Typ</div>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px]">
                       {draftField.type ?? 'text'}
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium">Key</span>
-                    <div className="mt-0.5 text-[11px] text-slate-700">
+                    <div className="mb-1 font-medium">Key</div>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px]">
                       {draftField.key ?? '(kein Key)'}
                     </div>
                   </div>
                 </div>
 
-                <div>
+                <div className="space-y-2">
                   <label className="block text-xs font-medium text-slate-700">
                     Label
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      value={draftField.label ?? ''}
+                      onChange={(e) =>
+                        handleDraftChange('label', e.target.value)
+                      }
+                    />
                   </label>
-                  <input
-                    type="text"
-                    className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    value={draftField.label ?? ''}
-                    onChange={(e) =>
-                      handleDraftChange('label', e.target.value)
-                    }
-                  />
-                </div>
 
-                <div>
                   <label className="block text-xs font-medium text-slate-700">
                     Placeholder
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      value={draftField.placeholder ?? ''}
+                      onChange={(e) =>
+                        handleDraftChange('placeholder', e.target.value)
+                      }
+                    />
                   </label>
-                  <input
-                    type="text"
-                    className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    value={draftField.placeholder ?? ''}
-                    onChange={(e) =>
-                      handleDraftChange('placeholder', e.target.value)
-                    }
-                  />
-                </div>
 
-                <div>
                   <label className="block text-xs font-medium text-slate-700">
                     Help-Text
+                    <textarea
+                      rows={3}
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      value={draftField.helpText ?? ''}
+                      onChange={(e) =>
+                        handleDraftChange('helpText', e.target.value)
+                      }
+                    />
                   </label>
-                  <textarea
-                    rows={2}
-                    className="mt-1 block w-full rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    value={draftField.helpText ?? ''}
-                    onChange={(e) =>
-                      handleDraftChange('helpText', e.target.value)
-                    }
-                  />
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+                <div className="flex flex-wrap gap-4 text-xs text-slate-700">
                   <label className="inline-flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -686,7 +652,7 @@ export default function FormBuilderWorkspace(
                         handleDraftChange('required', e.target.checked)
                       }
                     />
-                    <span className="text-xs">Pflichtfeld</span>
+                    <span>Pflichtfeld</span>
                   </label>
 
                   <label className="inline-flex items-center gap-2">
@@ -698,27 +664,23 @@ export default function FormBuilderWorkspace(
                         handleDraftChange('isActive', e.target.checked)
                       }
                     />
-                    <span className="text-xs">Feld aktiv</span>
+                    <span>Feld aktiv</span>
                   </label>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="text-xs text-slate-500">
+                <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-500">
                     {fieldSaveError && (
-                      <span className="text-red-600">
-                        {fieldSaveError}
-                      </span>
+                      <span className="text-red-600">{fieldSaveError}</span>
                     )}
                     {fieldSaveSuccess && (
                       <span className="text-emerald-600">
                         Änderungen gespeichert.
                       </span>
                     )}
-                    {!fieldSaveError &&
-                      !fieldSaveSuccess &&
-                      isDraftDirty && (
-                        <span>Änderungen noch nicht gespeichert.</span>
-                      )}
+                    {!fieldSaveError && !fieldSaveSuccess && isDraftDirty && (
+                      <span>Änderungen noch nicht gespeichert.</span>
+                    )}
                   </div>
 
                   <button
