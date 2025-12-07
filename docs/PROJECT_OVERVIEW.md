@@ -136,6 +136,121 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
 
 ---
 
+
+Speichern.
+
+---
+
+## Schritt 19 – `docs/PROJECT_OVERVIEW.md` aktualisieren
+
+Da ich den bisherigen Inhalt nicht sehe, bekommst du eine **vollständige, konsistente Version**, die du entweder als neue Basis nimmst oder manuell mit deiner bestehenden Datei mergen kannst.
+
+**Tool:** VS Code  
+**Ziel:** Teilprojekt 1.6 im Gesamtüberblick verankern.
+
+**Aktion:**
+
+1. Öffne  
+   `C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`
+
+2. Ersetze den Inhalt durch diesen Vorschlag (oder füge zumindest den Block zu 1.6 hinzu, wenn du manuell mergen willst):
+
+```md
+# LeadRadar2025g – Project Overview
+
+Backend-first Rebuild der LeadRadar-Plattform mit sauberem Multi-Tenant-Backend, Admin-UI und späterer Mobile-App-Anbindung.
+
+---
+
+## 1.x – Backend (Core & APIs)
+
+**Status-Legende:**  
+✅ abgeschlossen 🟡 in Arbeit ⚪ geplant
+
+- ✅ **1.0 – Projektsetup & Grundstruktur**
+  - Next.js App Router, TypeScript, Prisma/PostgreSQL.
+  - Basis-Struktur für `app/`, `lib/`, `prisma/`, `docs/`.
+- ✅ **1.1 – Multi-Tenant Core**
+  - Modelle `Tenant`, `User`.
+  - `requireAuthContext(req)` mit `x-user-id`.
+  - Tenant-Scoping für alle relevanten Queries.
+- ✅ **1.2 – Forms & FormFields Core**
+  - Modelle `Form`, `FormField`.
+  - Admin-API für CRUD auf Forms und FormFields.
+- ✅ **1.3 – Leads Core & Public API**
+  - Modell `Lead`.
+  - `POST /api/leads` (Public), `GET /api/admin/forms/[id]/leads` (Admin).
+- ✅ **1.4 – Leads – E-Mail-Flows**
+  - Danke-Mail an Lead.
+  - Info-Mail an Innendienst (konfigurierbare Adressen).
+- ✅ **1.6 – Events (Messen), Formular-Bindung & Mobile-API**
+  - Neues Modell `Event` + Enum `EventStatus`.
+  - Join-Tabelle `EventForm` (Formulare an Events binden, `isPrimary`).
+  - `Lead` mit optionaler `eventId`.
+  - Admin-Endpoints:
+    - `GET /api/admin/events`
+    - `POST /api/admin/events`
+    - `GET /api/admin/events/[id]`
+    - `PATCH /api/admin/events/[id]`
+    - `GET /api/admin/events/[id]/forms`
+    - `POST /api/admin/events/[id]/forms`
+  - Mobile-Endpoints:
+    - `GET /api/mobile/events?tenantSlug=...`
+    - `GET /api/mobile/events/[id]/forms`
+- ✅ **1.7 – Leads – Export & CSV**
+  - CSV-Export pro Form mit konfigurierbaren Spalten.
+  - Admin-Endpoint `GET /api/admin/forms/[id]/leads/export`.
+
+---
+
+## 2.x – Admin-UI
+
+- ✅ **2.1 – Admin-Basics & Navigation**
+  - Erste Admin-Seiten für Forms & Leads.
+- ✅ **2.2 – FormFields-CRUD & Reihenfolge**
+  - Verwaltung von Feldern pro Form.
+  - Sortierung per Drag & Drop.
+- ✅ **2.3 – Leads-Listen & Export**
+  - Tabellenansicht aller Leads pro Form.
+  - CSV-Export-Knopf im UI.
+- ✅ **2.4 – Layout-Shell & Sidebar-Navigation**
+  - Persistente Admin-Layout-Shell mit Sidebar.
+- ✅ **2.5 – Admin-Formbuilder – Builder-View & Vorschau (Basis)**
+  - Erster Builder-Workspace mit Vorschau.
+- ✅ **2.6 – FormDetail & Builder fusionieren (Basis)**
+  - Vereinheitlichung von Detailansicht und Builder.
+- ✅ **2.7 – Properties-Panel & Feldbearbeitung**
+  - Rechtsseitiges Properties-Panel für FormFields.
+- 🟡 **2.9 – Admin-Formbuilder – Tablet-Layout & App-nahe Vorschau**
+  - Zwei-Spalten-Layout (links dynamische Fragen, rechts Kontaktblock).
+  - Ziel: App-nahe Tablet-Vorschau für späteres Mobile-UI.
+
+---
+
+## 3.x – Mobile (Preview, später eigenes Projekt)
+
+- ⚪ **3.0 – Mobile-API-Integration**
+  - Nutzung von `GET /api/mobile/events` und `GET /api/mobile/events/[id]/forms`.
+  - Formulardaten in Mobile-App synchronisieren.
+- ⚪ **3.1 – Offline-Lead-Erfassung**
+  - Lokale Speicherung + späterer Sync gegen Backend.
+
+---
+
+## Stand nach Teilprojekt 1.6
+
+- **Events (Messen) sind als eigene Entität im Backend verankert.**
+- **Formulare können flexibel pro Event konfiguriert** werden (inkl. Primary-Form).
+- **Leads können einem Event zugeordnet** werden, ohne bestehende Daten zu brechen.
+- Die **Mobile-API** bietet jetzt eine saubere Grundlage, um pro Tenant:
+  - aktive Events anzuzeigen,
+  - pro Event die passenden Formulare (inkl. Primary-Form) zu laden.
+
+Details & API-Contracts siehe:  
+➡ `docs/teilprojekt-1.6-events.md`
+
+---
+
 ### 1.7 – Backend Exports (CSV & Download-API)
 
 **Ziel:** CSV-Export von Leads für Formular-Owner.
@@ -293,4 +408,54 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
   - Properties-Panel im Builder,
   - Drag & Drop im Layout,
   - Template-Auswahl für Kunden.
+
+---
+
+## Schritt 2 – `PROJECT_OVERVIEW.md` um Stand nach 2.7 ergänzen
+
+**Tool:** VS Code  
+**Ziel:** Überblicks-Doku um den neuen Stand erweitern.
+
+**Aktion:**
+
+1. Öffne:
+
+`C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`  
+*(oder wo deine Projektübersicht liegt – Pfad ggf. anpassen)*
+
+2. Füge am passenden Ort (z. B. unter „Teilprojekt 2.x – Admin-UI“) folgenden Abschnitt hinzu:
+
+```md
+### Stand nach Teilprojekt 2.7 – Admin-Formbuilder: Properties-Panel & Feldbearbeitung
+
+- `/admin/forms/[id]` ist der zentrale Formbuilder-Workspace:
+  - linke Spalte: Feldliste (Auswahl des aktiven Feldes),
+  - rechte Spalte: Vorschau (klickbare Felder) + Properties-Panel.
+- Im Properties-Panel können folgende Eigenschaften eines Feldes direkt im Builder editiert und gespeichert werden:
+  - Label, Placeholder, Help-Text,
+  - Pflichtfeld (`required`),
+  - Aktiv/Inaktiv (`isActive`).
+- Persistenz läuft über die bestehende Admin-API:
+  - `PATCH /api/admin/forms/[formId]/fields/[fieldId]` mit `x-user-id`.
+- UX-Details:
+  - Klick in die Vorschau oder Feldliste wählt das aktive Feld,
+  - Save-Button ist nur aktiv bei tatsächlichen Änderungen,
+  - Erfolg- & Fehlermeldungen werden direkt im Panel angezeigt.
+- Linke Spalte ist bewusst für zukünftige globale Form-/CD-Settings reserviert
+  (Theme, Farben, Komponenten-Defaults, später Drag & Drop etc.).
+- Die Legacy-Feldtabelle (`FormFieldsTable`) bleibt weiterhin als technische Ansicht unterhalb des Builders bestehen.
+
+---
+
+### Stand nach Teilprojekt 2.9 – Admin-Formbuilder: Tablet-Layout & App-nahe Vorschau
+
+- Die Vorschau im Admin-Formbuilder nutzt nun ein **zweispaltiges Tablet-Layout**:
+  - Linke Spalte: dynamische Formularfelder mit Drag & Drop und persistierter Reihenfolge.
+  - Rechte Spalte: heuristisch erkannter Kontakt-/OCR-Block mit typischen Kontaktfeldern
+    (Firma, Vorname, Nachname, Telefon, E-Mail, Notizen).
+- Die Vorschau hängt am gleichen Datenstrom wie Feldliste und Properties-Panel:
+  - Klicks in Liste und Tablet-Vorschau sind synchron,
+  - Änderungen an Label, Placeholder, Help-Text, Required, isActive werden direkt übernommen.
+- Die Reihung aus der Feldliste beeinflusst primär die dynamischen Felder (links),
+  während der Kontaktblock (rechts) eine eigene, feste Slot-Reihenfolge besitzt.
 

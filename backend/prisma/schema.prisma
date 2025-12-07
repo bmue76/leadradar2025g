@@ -34,6 +34,12 @@ enum FormFieldType {
   NOTE
 }
 
+enum EventStatus {
+  PLANNED
+  ACTIVE
+  FINISHED
+}
+
 /*
   Core Multi-Tenant Models
 */
@@ -46,10 +52,11 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  forms     Form[]
+  users      User[]
+  forms      Form[]
   formFields FormField[]
-  leads     Lead[]
+  leads      Lead[]
+  events     Event[]
 }
 
 model User {
@@ -92,8 +99,9 @@ model Form {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  fields   FormField[]
-  leads    Lead[]
+  fields     FormField[]
+  leads      Lead[]
+  eventForms EventForm[]
 
   @@index([tenantId])
   @@unique([tenantId, slug])
@@ -107,13 +115,13 @@ model FormField {
   formId Int
   form   Form @relation(fields: [formId], references: [id], onDelete: Cascade)
 
-  key        String
-  label      String
-  type       FormFieldType
+  key         String
+  label       String
+  type        FormFieldType
   placeholder String?
   helpText    String?
-  required   Boolean @default(false)
-  order      Int     @default(0)
+  required    Boolean @default(false)
+  order       Int     @default(0)
 
   // JSON-Konfiguration für Feld-spezifische Einstellungen
   // z. B. options (für SELECT / MULTISELECT / RADIO), Min-/Max-Länge, etc.
@@ -137,6 +145,9 @@ model Lead {
   formId Int
   form   Form @relation(fields: [formId], references: [id], onDelete: Cascade)
 
+  eventId Int?
+  event   Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
   // Flexible Antworten-Map basierend auf FormField.key
   values Json
 
@@ -151,5 +162,52 @@ model Lead {
 
   @@index([tenantId])
   @@index([formId])
+  @@index([eventId])
   @@index([createdAt])
+}
+
+/*
+  Events & Event-Form-Zuordnung
+*/
+
+model Event {
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  slug        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  status      EventStatus @default(PLANNED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventForms EventForm[]
+  leads      Lead[]
+
+  @@index([tenantId])
+  @@unique([tenantId, slug])
+}
+
+model EventForm {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  formId Int
+  form   Form  @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([formId])
+  @@unique([eventId, formId])
 }

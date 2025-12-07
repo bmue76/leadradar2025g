@@ -3,7 +3,7 @@
 // .env laden (DATABASE_URL)
 require('dotenv').config();
 
-const { PrismaClient, FormStatus, FormFieldType } = require('@prisma/client');
+const { PrismaClient, FormStatus, FormFieldType, EventStatus } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { Pool } = require('pg');
 
@@ -147,7 +147,54 @@ async function main() {
   console.log('✅ Form:', form.name, `(id: ${form.id}, slug: ${form.slug})`);
   console.log('   Fields:', form.fields.map((f) => `${f.key} (${f.type})`).join(', '));
 
-  // 4) Optional: Beispiel-Lead anlegen, falls noch keiner mit source "seed" existiert
+  // 4) Demo-Event anlegen oder wiederverwenden
+  const demoEventSlug = 'demo-messe-2026';
+
+  const event = await prisma.event.upsert({
+    where: {
+      // basiert auf @@unique([tenantId, slug]) in schema.prisma
+      tenantId_slug: {
+        tenantId: tenant.id,
+        slug: demoEventSlug,
+      },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      name: 'Demo-Messe 2026',
+      slug: demoEventSlug,
+      description: 'Beispiel-Messe für den Demo-Tenant.',
+      startDate: new Date('2026-01-15T09:00:00.000Z'),
+      endDate: new Date('2026-01-18T17:00:00.000Z'),
+      location: 'Messezentrum Demo City',
+      status: EventStatus.PLANNED,
+    },
+  });
+
+  console.log('✅ Event:', event.name, `(id: ${event.id}, slug: ${event.slug})`);
+
+  // 5) EventForm-Verknüpfung: Demo-Messe 2026 ↔ Demo-Formular
+  const eventForm = await prisma.eventForm.upsert({
+    where: {
+      eventId_formId: {
+        eventId: event.id,
+        formId: form.id,
+      },
+    },
+    update: {},
+    create: {
+      eventId: event.id,
+      formId: form.id,
+      isPrimary: true,
+    },
+  });
+
+  console.log(
+    '✅ EventForm-Verknüpfung erstellt/gefunden:',
+    `Event ${event.id} ↔ Form ${form.id}, isPrimary=${eventForm.isPrimary}`
+  );
+
+  // 6) Beispiel-Lead anlegen oder mit Event verknüpfen
   const existingSeedLead = await prisma.lead.findFirst({
     where: {
       tenantId: tenant.id,
@@ -161,6 +208,7 @@ async function main() {
       data: {
         tenantId: tenant.id,
         formId: form.id,
+        eventId: event.id,
         source: 'seed',
         createdByUserId: user.id,
         values: {
@@ -175,9 +223,26 @@ async function main() {
       },
     });
 
-    console.log('✅ Demo-Lead erstellt:', lead.id);
+    console.log('✅ Demo-Lead erstellt:', lead.id, `mit eventId=${lead.eventId}`);
   } else {
-    console.log('ℹ️ Demo-Lead mit source "seed" existiert bereits, nichts zu tun.');
+    // Falls der Lead schon existiert, aber noch kein Event gesetzt ist, nachziehen
+    if (!existingSeedLead.eventId) {
+      const updatedLead = await prisma.lead.update({
+        where: { id: existingSeedLead.id },
+        data: {
+          eventId: event.id,
+        },
+      });
+      console.log(
+        'ℹ️ Bestehender Demo-Lead aktualisiert:',
+        updatedLead.id,
+        `jetzt mit eventId=${updatedLead.eventId}`
+      );
+    } else {
+      console.log(
+        'ℹ️ Demo-Lead mit source "seed" existiert bereits und ist bereits einem Event zugeordnet, nichts zu tun.'
+      );
+    }
   }
 
   console.log('🌱 Seeding finished.');
