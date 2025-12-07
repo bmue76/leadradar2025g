@@ -459,3 +459,21 @@ Details & API-Contracts siehe:
 - Die Reihung aus der Feldliste beeinflusst primär die dynamischen Felder (links),
   während der Kontaktblock (rechts) eine eigene, feste Slot-Reihenfolge besitzt.
 
+---
+
+**Ziel:** Projektübersicht um Teilprojekt 2.10 erweitern.
+
+### Aktion
+
+Öffne:  
+`C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`
+
+Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hinzu, z. B. direkt nach 2.9:
+
+```md
+- **2.9 – Admin-Formbuilder – Tablet-Layout & App-nahe Vorschau**  
+  Formbuilder-Workspace mit Tablet-Preview, DnD, Properties-Panel, app-naher Ansicht.
+
+- **2.10 – Admin-UI – Events (Liste, Detail & Formular-Bindung)**  
+  Events im Admin-Bereich sichtbar gemacht: eigene Events-Liste, Event-Detailseite mit Meta-Infos, read-only Formular-Zuordnung und Basis-Editing für Name, Zeitraum und Status. Admin-Events-Endpoints auf Next.js-16-params-Modell angepasst.
+
