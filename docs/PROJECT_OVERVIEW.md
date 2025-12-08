@@ -477,3 +477,8 @@ Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hi
 - **2.10 – Admin-UI – Events (Liste, Detail & Formular-Bindung)**  
   Events im Admin-Bereich sichtbar gemacht: eigene Events-Liste, Event-Detailseite mit Meta-Infos, read-only Formular-Zuordnung und Basis-Editing für Name, Zeitraum und Status. Admin-Events-Endpoints auf Next.js-16-params-Modell angepasst.
 
+---
+
+| Nr.  | Bereich   | Titel                                           | Status | Datei                                                   |
+| ---- | --------- | ----------------------------------------------- | ------ | ------------------------------------------------------- |
+| 2.11 | Admin-UI  | Event-Erstellung & Formular-Bindung             | erledigt | `teilprojekt-2.11-admin-ui-event-erstellung-formbinding.md` |
