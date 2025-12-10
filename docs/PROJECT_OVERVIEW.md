@@ -515,3 +515,18 @@ Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hi
 - CSV-Export-Button in der Event-Leads-Seite:
   - Client Component `EventLeadsExportButton`.
   - Ruft den CSV-Export mit `x-user-id`-Header auf und triggert einen File-Download.
+
+---
+
+- **Teilprojekt 2.13 – Admin-UI: Billing-Übersicht & Abo-Start**  
+  `/admin/billing` zeigt den aktuellen Abo-Status des Tenants (Subscription-Status, Price-ID, Periodenende) und bietet einen „Abo starten / verwalten“-Button, der den Stripe-Checkout-Flow aus Teilprojekt 1.5 anstößt. Stripe ist aktuell noch nicht produktiv konfiguriert, die UI ist jedoch vorbereitet.
+
+---
+
+- **2.14 – Admin-UI: Globale Leads-Übersicht & Filter**  
+  Globale Übersicht aller Leads eines Tenants unter `/admin/leads`.  
+  Backend-Endpoint `GET /api/admin/leads` mit Pagination, Event/Form-Filter und Zeitraum.  
+  Admin-Seite zeigt alle Leads mit Basis-Infos (Datum, Event, Formular, Name, Firma, E-Mail, Quelle, Values-Preview) und ermöglicht Seitenwechsel & Filterung.
+
+---
+
