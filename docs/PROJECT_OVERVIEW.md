@@ -482,3 +482,20 @@ Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hi
 | Nr.  | Bereich   | Titel                                           | Status | Datei                                                   |
 | ---- | --------- | ----------------------------------------------- | ------ | ------------------------------------------------------- |
 | 2.11 | Admin-UI  | Event-Erstellung & Formular-Bindung             | erledigt | `teilprojekt-2.11-admin-ui-event-erstellung-formbinding.md` |
+
+---
+
+### Teilprojekt 2.12 – Admin-UI: Event-Leads-Ansicht & CSV-Export
+
+- Neue Admin-Seite `/admin/events/[id]/leads`:
+  - Event-spezifische Leads-Übersicht (alle Leads mit `eventId` des Events).
+  - Tabelle mit Datum/Zeit, Quelle, Name, E-Mail, Firma und Werte-Preview.
+  - Pagination über `page` und `limit` (Query-Parameter in der URL).
+  - Navigation zurück zur Event-Detailseite (`/admin/events/[id]`).
+- Backend-Endpoint `GET /api/admin/events/[id]/leads`:
+  - Liefert paginierte Leads im JSON-Format.
+  - Optionaler CSV-Export über `?format=csv` (inkl. Datefilter `from`/`to`).
+  - CSV nutzt bestehende Export-Logik (`buildLeadsCsv`) und exportiert Leads des **primären Event-Formulars**.
+- CSV-Export-Button in der Event-Leads-Seite:
+  - Client Component `EventLeadsExportButton`.
+  - Ruft den CSV-Export mit `x-user-id`-Header auf und triggert einen File-Download.

@@ -146,10 +146,10 @@ export default async function AdminEventDetailPage({
         </div>
 
         <Link
-          href="/admin/events"
-          className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          href={`/admin/events/${event.id}/leads`}
+          className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
         >
-          ← Zurück zur Eventliste
+          Leads ansehen
         </Link>
       </div>
 
