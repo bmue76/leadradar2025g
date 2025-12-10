@@ -136,8 +136,24 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
 
 ---
 
+## Teilprojekt 1.5 – Stripe Billing & Access Control (Backend)
 
-Speichern.
+- Neues Prisma-Datenmodell `Subscription` mit `SubscriptionStatus`-Enum und Relation zu `Tenant`.
+- Stripe-Anbindung via `lib/stripe.ts` mit env-basierten Keys & Helpern.
+- Auth-Kontext `requireAuthContext` für API-Routen auf Basis von `x-user-id` + Tenant.
+- Checkout-Endpoint `POST /api/billing/create-checkout-session`:
+  - Prüft bestehende aktive Abos.
+  - Erstellt Stripe Checkout Session mit Abo-Price und Tenant-Metadaten.
+- Webhook-Endpoint `POST /api/billing/webhook`:
+  - Verifiziert Signatur.
+  - Reagiert auf `customer.subscription.*`-Events.
+  - Upsert der Subscription in der DB.
+- Subscription-Helpers in `lib/subscription.ts`:
+  - `isSubscriptionActive`, `getCurrentSubscriptionForTenant`, `hasActiveSubscription`, `requireActiveSubscription`.
+- Status-Endpoint `GET /api/admin/billing/status`:
+  - Liefert Abo-Status + Flags für die Admin-UI.
+- Aktuell sind Stripe-Keys noch Dummy-Werte; Umstellung auf echte Test-Keys folgt kurz vor Beta.
+
 
 ---
 

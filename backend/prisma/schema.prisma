@@ -40,6 +40,17 @@ enum EventStatus {
   FINISHED
 }
 
+// Stripe Subscription Status
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  incomplete_expired
+  unpaid
+}
+
 /*
   Core Multi-Tenant Models
 */
@@ -57,6 +68,9 @@ model Tenant {
   formFields FormField[]
   leads      Lead[]
   events     Event[]
+
+  // Stripe-Subscriptions für diesen Tenant
+  subscriptions Subscription[]
 }
 
 model User {
@@ -210,4 +224,36 @@ model EventForm {
   @@index([eventId])
   @@index([formId])
   @@unique([eventId, formId])
+}
+
+/*
+  Stripe Subscriptions
+*/
+
+model Subscription {
+  id Int @id @default(autoincrement())
+
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Stripe IDs
+  stripeCustomerId     String?
+  stripeSubscriptionId String? @unique
+  stripePriceId        String?
+
+  // Status & Lifecycle
+  status             SubscriptionStatus
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAt           DateTime?
+  cancelAtPeriodEnd  Boolean  @default(false)
+  canceledAt         DateTime?
+
+  // Convenience-Flag, ob das Abo aktuell "zählt"
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }
