@@ -71,6 +71,9 @@ model Tenant {
 
   // Stripe-Subscriptions für diesen Tenant
   subscriptions Subscription[]
+
+  // API-Keys für Integrationen / Mobile
+  apiKeys ApiKey[]
 }
 
 model User {
@@ -256,4 +259,33 @@ model Subscription {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+/*
+  API Keys für nicht-interaktive Clients (Mobile / Integrationen)
+*/
+
+model ApiKey {
+  id        Int      @id @default(autoincrement())
+
+  tenantId  Int
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Anzeigename für den Key (z. B. "Mobile App Prod", "Integration XY")
+  name      String
+
+  /// Hash des API-Keys (z. B. SHA-256)
+  keyHash   String
+
+  /// Ob der Key aktuell verwendet werden darf
+  isActive  Boolean  @default(true)
+
+  /// Letzte Verwendung des Keys (z. B. für Auditing / Cleanup)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([keyHash])
 }

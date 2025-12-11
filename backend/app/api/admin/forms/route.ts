@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuthContext, AuthError } from '@/lib/auth';
 import type { Prisma } from '@prisma/client';
+import { createFormRequestSchema } from '@/lib/validation/forms';
+import type { ZodError } from 'zod';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,7 +149,9 @@ export async function GET(req: NextRequest) {
  * {
  *   "title": "Kontaktformular Messe XY",   // wird intern als "name" gespeichert
  *   "slug": "optional",                    // optional, überschreibt auto-Generierung
- *   "status": "DRAFT" | "ACTIVE"           // optional, default "DRAFT"
+ *   "status": "DRAFT" | "ACTIVE",          // optional, default "DRAFT"
+ *   "description": "optional",             // optional
+ *   "fields": [ { ... } ]                  // optional, aktuell noch ungenutzt
  * }
  *
  * Response: 201 Created
@@ -159,15 +163,9 @@ export async function POST(req: NextRequest) {
   try {
     const { tenant } = await requireAuthContext(req);
 
-    const body = (await req.json().catch(() => null)) as
-      | {
-          title?: unknown;
-          slug?: unknown;
-          status?: unknown;
-        }
-      | null;
+    const rawJson = await req.json().catch(() => null);
 
-    if (!body || typeof body !== 'object') {
+    if (!rawJson || typeof rawJson !== 'object') {
       return jsonError(
         'Invalid request body: expected JSON object',
         400,
@@ -175,41 +173,53 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawTitle = body.title;
-    const rawSlug = body.slug;
-    const rawStatus = body.status;
+    const body = rawJson as {
+      title?: unknown;
+      slug?: unknown;
+      status?: unknown;
+      description?: unknown;
+      fields?: unknown;
+    };
 
-    if (typeof rawTitle !== 'string' || rawTitle.trim().length === 0) {
-      return jsonError('Title is required', 400, 'VALIDATION_ERROR');
+    // Mapping des eingehenden Bodys (title/slug/status/...) auf das Zod-Schema (name/...)
+    const mappedForValidation = {
+      name: body.title,
+      description: body.description,
+      status: body.status,
+      slug: body.slug,
+      fields: body.fields,
+    };
+
+    const parseResult = createFormRequestSchema.safeParse(mappedForValidation);
+
+    if (!parseResult.success) {
+      const zodError = parseResult.error as ZodError;
+
+      return jsonError(
+        'Validation failed',
+        400,
+        'VALIDATION_ERROR',
+        {
+          issues: zodError.issues,
+        },
+      );
     }
 
-    const title = rawTitle.trim();
-    const name = title; // Mapping: Request-"title" -> DB-Feld "name"
+    const { name, description, status, slug: providedSlug } = parseResult.data;
+
+    const title = name.trim();
+    const finalName = title;
 
     // Status-Handling: nur DRAFT oder ACTIVE erlaubt, default DRAFT
-    let status: string = 'DRAFT';
-
-    if (typeof rawStatus === 'string') {
-      const allowed = ['DRAFT', 'ACTIVE'] as const;
-      type Allowed = (typeof allowed)[number];
-
-      if (!allowed.includes(rawStatus as Allowed)) {
-        return jsonError(
-          'Invalid status: must be DRAFT or ACTIVE',
-          400,
-          'VALIDATION_ERROR',
-        );
-      }
-      status = rawStatus;
-    }
+    const finalStatus: 'DRAFT' | 'ACTIVE' = (status ?? 'DRAFT');
 
     // Slug-Handling:
     // - Wenn explizit angegeben -> prüfen auf Kollision (409).
     // - Wenn nicht angegeben -> aus Titel generieren und bei Bedarf mit -1, -2 ... erweitern.
     let slug: string;
 
-    if (typeof rawSlug === 'string' && rawSlug.trim().length > 0) {
-      const candidate = rawSlug.trim();
+    if (providedSlug && providedSlug.trim().length > 0) {
+      const candidate = providedSlug.trim();
 
       const existing = await prisma.form.findFirst({
         where: {
@@ -263,8 +273,9 @@ export async function POST(req: NextRequest) {
     const form = await prisma.form.create({
       data: {
         tenantId: tenant.id,
-        name, // Pflichtfeld im Prisma-Modell
-        status: status as any, // Prisma-Enum, aber String passt
+        name: finalName, // Pflichtfeld im Prisma-Modell
+        description: description ?? null,
+        status: finalStatus as any, // Prisma-Enum, aber String passt
         slug,
         // Version-Handling: default 1 in Prisma-Schema angenommen.
         // createdBy/updatedBy hängen von deinem Schema ab – Beispiel:

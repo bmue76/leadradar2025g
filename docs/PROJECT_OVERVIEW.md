@@ -286,7 +286,24 @@ Details & API-Contracts siehe:
 
 ---
 
-## Admin-UI-Teilprojekte (2.x)
+### 1.8 – Backend – Security & Hardening (Rate Limiting, API-Keys & Validation)
+
+- Neues Prisma-Model `ApiKey` inkl. Relation zu `Tenant`:
+  - Felder: `id`, `tenantId`, `name`, `keyHash`, `isActive`, `createdAt`, `updatedAt`, `lastUsedAt`.
+- Zentrale API-Key-Helpers in `lib/api-keys.ts`:
+  - `generateApiKeyForTenant({ tenantId, name })` generiert einen Klartext-Key und speichert nur den Hash.
+  - `resolveTenantByApiKey(rawKey)` resolved `tenant` + `apiKey` über den Hash und setzt `lastUsedAt`.
+  - `requireApiKeyContext(req)` liest `x-api-key` und liefert einen `ApiKeyContext` (Tenant + ApiKey).
+- In-Memory Rate Limiting in `lib/rate-limit.ts`:
+  - `checkRateLimit({ key, windowMs, maxRequests })` mit globalem Store auf `globalThis`.
+  - `getClientIp(req)` extrahiert IP/Client-ID über `x-forwarded-for`, `x-real-ip`, Fallback `host`.
+- Aktive Rate Limits auf Public-/Mobile-Endpoints:
+  - `POST /api/leads` → 30 Requests/Minute pro Client (IP oder `x-api-key`).
+  - `GET /api/forms/[id]` → 60 Requests/Minute pro Client.
+  - `GET /api/mobile/events` → 120 Requests/Minute pro Client.
+  - `GET /api/mobile/events/[id]()
+
+---
 
 ### 2.1 – Admin-UI: Forms-CRUD (List & Detail)
 

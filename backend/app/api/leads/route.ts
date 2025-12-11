@@ -2,8 +2,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { CreateLeadRequest } from '@/lib/types/forms';
 import { handleLeadCreatedEmailFlows } from '@/lib/lead-email-flows';
+import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
+import { createLeadRequestSchema } from '@/lib/validation/leads';
+import type { ZodError } from 'zod';
 
 /**
  * Hilfsfunktion: Prüft, ob ein Wert als "gefüllt" gilt.
@@ -38,20 +40,51 @@ function isNonEmptyValue(value: unknown): boolean {
  *     "firstName": "Beat",
  *     "lastName": "Müller",
  *     "email": "beat@example.com"
- *   }
+ *   },
+ *   "eventId": 123,         // optional
+ *   "source": "mobile-app"  // optional
  * }
  *
- * - Validiert formId & values.
+ * - Validiert Body-Struktur mit Zod.
  * - Prüft Pflichtfelder des Formulars.
  * - Legt den Lead an.
  * - Triggert danach die E-Mail-Flows (Danke-Mail & Innendienst).
  */
 export async function POST(req: NextRequest) {
-  // 1) Body einlesen
-  let body: CreateLeadRequest | null = null;
+  // 0) Rate Limiting: 30 Requests pro Minute pro Client (API-Key oder IP)
+  const clientId = req.headers.get('x-api-key') ?? getClientIp(req);
 
+  const rlResult = checkRateLimit({
+    key: `${clientId}:POST:/api/leads`,
+    windowMs: 60_000, // 1 Minute
+    maxRequests: 30,
+  });
+
+  if (!rlResult.allowed) {
+    const retryAfterSeconds = Math.ceil((rlResult.retryAfterMs ?? 0) / 1000);
+
+    return NextResponse.json(
+      {
+        error: 'Too many requests',
+        code: 'RATE_LIMITED',
+        details: {
+          retryAfterMs: rlResult.retryAfterMs ?? 0,
+          retryAfterSeconds,
+        },
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': retryAfterSeconds.toString(),
+        },
+      },
+    );
+  }
+
+  // 1) Body einlesen & mit Zod validieren
+  let json: unknown;
   try {
-    body = (await req.json()) as CreateLeadRequest;
+    json = await req.json();
   } catch {
     return NextResponse.json(
       {
@@ -62,38 +95,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!body) {
+  const parseResult = createLeadRequestSchema.safeParse(json);
+
+  if (!parseResult.success) {
+    const zodError = parseResult.error as ZodError;
+
     return NextResponse.json(
       {
-        error: 'Request-Body fehlt.',
-        code: 'MISSING_BODY',
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: {
+          issues: zodError.issues,
+        },
       },
       { status: 400 },
     );
   }
 
-  const formId = Number((body as any).formId);
-  const values = (body as any).values;
-
-  if (!Number.isInteger(formId) || formId <= 0) {
-    return NextResponse.json(
-      {
-        error: 'Ungültige formId.',
-        code: 'INVALID_FORM_ID',
-      },
-      { status: 400 },
-    );
-  }
-
-  if (!values || typeof values !== 'object' || Array.isArray(values)) {
-    return NextResponse.json(
-      {
-        error: 'Ungültige values-Struktur. Erwartet wird ein Objekt.',
-        code: 'INVALID_VALUES',
-      },
-      { status: 400 },
-    );
-  }
+  const { formId, values, eventId, source } = parseResult.data;
 
   try {
     // 2) Formular laden
@@ -168,7 +187,9 @@ export async function POST(req: NextRequest) {
         tenantId: form.tenantId,
         formId: form.id,
         values: values as any,
-        // source, createdByUserId etc. können später ergänzt werden
+        eventId: eventId ?? null,
+        source: source ?? null,
+        // createdByUserId etc. können später ergänzt werden
         createdAt: now,
         updatedAt: now,
       },
@@ -176,8 +197,6 @@ export async function POST(req: NextRequest) {
 
     // 6) E-Mail-Flows ausführen (Danke-Mail & Innendienst)
     //    WICHTIG: Fehler in den E-Mail-Flows dürfen NICHT den Lead-Speicherprozess zerschießen.
-    //    handleLeadCreatedEmailFlows fängt intern bereits Fehler ab;
-    //    wir haben hier zusätzlich ein try/catch als Sicherheitsnetz.
     try {
       await handleLeadCreatedEmailFlows({
         lead,

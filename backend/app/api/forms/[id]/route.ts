@@ -2,13 +2,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'NOT_FOUND'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'RATE_LIMITED';
 
 function jsonError(
   message: string,
@@ -41,6 +43,29 @@ function jsonError(
  * }
  */
 export async function GET(req: NextRequest, context: any) {
+  // Rate Limiting: 60 Requests pro Minute pro Client (API-Key oder IP)
+  const clientId = req.headers.get('x-api-key') ?? getClientIp(req);
+
+  const rlResult = checkRateLimit({
+    key: `${clientId}:GET:/api/forms/[id]`,
+    windowMs: 60_000, // 1 Minute
+    maxRequests: 60,
+  });
+
+  if (!rlResult.allowed) {
+    const retryAfterSeconds = Math.ceil((rlResult.retryAfterMs ?? 0) / 1000);
+
+    return jsonError(
+      'Too many requests',
+      429,
+      'RATE_LIMITED',
+      {
+        retryAfterMs: rlResult.retryAfterMs ?? 0,
+        retryAfterSeconds,
+      },
+    );
+  }
+
   try {
     // In Next 15 ist context.params ein Promise -> wir müssen es awaiten
     const { id: rawId } = await context.params;
