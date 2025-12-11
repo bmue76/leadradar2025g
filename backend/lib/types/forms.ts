@@ -113,3 +113,63 @@ export interface CreateLeadRequest {
   values: LeadValueMap;
   source?: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Feld-Config & Select-Optionen (Teilprojekt 2.15)                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Choice-/Select-Feldtypen, die eine Optionsliste verwenden.
+ * Mindestens SELECT & MULTISELECT, optional RADIO.
+ */
+export const CHOICE_FIELD_TYPES = ['SELECT', 'MULTISELECT', 'RADIO'] as const;
+
+export type ChoiceFieldType = (typeof CHOICE_FIELD_TYPES)[number];
+
+/**
+ * Eine einzelne Option für Select-/Choice-Felder.
+ *
+ * id        – interne ID für React-Keys & UI, wird NICHT als Wert gespeichert/exportiert.
+ * label     – Anzeigetext im Formular.
+ * value     – der "technische" Wert, der in den Lead-Daten / Export landet.
+ * isDefault – optional: ob diese Option als Standard vorausgewählt sein soll.
+ */
+export interface SelectOptionConfig {
+  id: string;
+  label: string;
+  value: string;
+  isDefault?: boolean;
+}
+
+/**
+ * Konfiguration für ein SELECT-Feld (und später evt. auch MULTISELECT / RADIO).
+ *
+ * JSON-Struktur in FormField.config:
+ * {
+ *   "options": [
+ *     { "id": "opt-1", "label": "Heiss", "value": "hot", "isDefault": true },
+ *     { "id": "opt-2", "label": "Kalt", "value": "cold" }
+ *   ]
+ * }
+ */
+export interface SelectFieldConfig {
+  options: SelectOptionConfig[];
+}
+
+/**
+ * Generische Feld-Config.
+ *
+ * - Für SELECT-Felder verwenden wir SelectFieldConfig.
+ * - Für andere Felder kann config aktuell leer oder ein beliebiges Objekt sein.
+ * - In der DB ist config i. d. R. JSON oder null.
+ */
+export type FormFieldConfig = SelectFieldConfig | Record<string, unknown> | null;
+
+/**
+ * Hilfstyp für "irgendein" Feld mit config.
+ * Kann sowohl auf dem Server (Prisma FormField) als auch im Frontend (DTO) verwendet werden.
+ */
+export interface FieldWithConfigLike {
+  type: FormFieldType | string;
+  config: unknown | null | undefined;
+}

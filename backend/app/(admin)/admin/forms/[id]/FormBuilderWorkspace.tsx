@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 
 import FormPreviewTabletLayout from './FormPreviewTabletLayout';
+import { FieldOptionsEditor } from './FieldOptionsEditor';
 
 type FieldId = string | number;
 
@@ -574,7 +575,7 @@ export default function FormBuilderWorkspace(
             />
           </div>
 
-          {/* Properties-Panel */}
+          {/* Properties-Panel + Optionen-Editor */}
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="mb-2 text-sm font-semibold text-slate-900">
               Feldeigenschaften
@@ -699,6 +700,57 @@ export default function FormBuilderWorkspace(
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* Optionen-Editor für Choice-Felder */}
+            {form?.id && activeField && (
+              <FieldOptionsEditor
+                formId={form.id as number | string}
+                field={activeField as any}
+                onFieldUpdated={(updated: any) => {
+                  // Normalisiertes Objekt in Richtung FormFieldLike bauen
+                  const normalizedUpdated: FormFieldLike = {
+                    id: updated.id,
+                    type: updated.type ?? activeField.type ?? null,
+                    config: updated.config ?? activeField.config,
+                    label:
+                      typeof updated.label === 'string'
+                        ? updated.label
+                        : activeField.label ?? null,
+                    key:
+                      typeof updated.key === 'string'
+                        ? updated.key
+                        : activeField.key,
+                    order:
+                      typeof updated.order === 'number'
+                        ? updated.order
+                        : activeField.order ?? null,
+                    isActive:
+                      typeof updated.isActive === 'boolean'
+                        ? updated.isActive
+                        : activeField.isActive,
+                    placeholder:
+                      updated.placeholder ?? activeField.placeholder ?? null,
+                    helpText: updated.helpText ?? activeField.helpText ?? null,
+                    required:
+                      typeof updated.required === 'boolean'
+                        ? updated.required
+                        : activeField.required ?? null,
+                  };
+
+                  setFieldsState((prev) =>
+                    prev.map((f) =>
+                      f.id === normalizedUpdated.id ? { ...f, ...normalizedUpdated } : f,
+                    ),
+                  );
+
+                  setDraftField((prev) =>
+                    prev && prev.id === normalizedUpdated.id
+                      ? { ...prev, ...normalizedUpdated }
+                      : prev,
+                  );
+                }}
+              />
             )}
           </div>
         </section>

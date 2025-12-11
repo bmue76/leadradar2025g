@@ -1,384 +1,228 @@
-// app/api/admin/forms/[id]/fields/[fieldId]/route.ts
+// backend/app/api/admin/forms/[id]/fields/[fieldId]/route.ts
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { ZodError } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireAuthContext } from '@/lib/auth';
-
-type RouteContext = {
-  params: Promise<{
-    id: string | string[];
-    fieldId: string | string[];
-  }>;
-};
-
-function jsonError(
-  status: number,
-  error: string,
-  message: string,
-  extra?: Record<string, unknown>,
-) {
-  return Response.json({ error, message, ...extra }, { status });
-}
+import { FormFieldDTO } from '@/lib/types/forms';
+import {
+  isChoiceFieldType,
+  normalizeSelectFieldConfig,
+  serializeSelectFieldConfig,
+} from '@/lib/formFieldConfig';
+import {
+  selectFieldConfigSchema,
+  updateFormFieldRequestSchema,
+} from '@/lib/validation/forms';
+import { requireAuthContext } from '@/lib/auth-context';
 
 /**
- * Hilfsfunktion: ID robust aus den Route-Params extrahieren.
+ * Mapping eines Prisma-FormField auf das API-/UI-DTO.
  */
-function parseId(raw: string | string[] | undefined): number | null {
-  const val = typeof raw === 'string' ? raw : raw?.[0];
-  if (!val) return null;
-
-  const parsed = Number.parseInt(val, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-
-  return parsed;
-}
-
-/**
- * PATCH /api/admin/forms/:id/fields/:fieldId
- *
- * Teilweises Update eines Feldes:
- * - label, key, type, required, placeholder, helpText, isActive
- * - order (Reihenfolge, 1-basiert)
- */
-export async function PATCH(req: NextRequest, context: RouteContext) {
-  const { id, fieldId } = await context.params;
-  const formId = parseId(id);
-  const fieldIdNum = parseId(fieldId);
-
-  if (!formId || !fieldIdNum) {
-    return jsonError(400, 'BAD_REQUEST', 'Invalid form or field id');
-  }
-
-  const body = (await req.json().catch(() => null)) as
-    | Record<string, unknown>
-    | null;
-
-  if (!body || typeof body !== 'object') {
-    return jsonError(400, 'BAD_REQUEST', 'Invalid request body');
-  }
-
-  const {
-    label,
-    key,
-    type,
-    required,
-    placeholder,
-    helpText,
-    isActive,
-    order,
-  } = body as {
-    label?: unknown;
-    key?: unknown;
-    type?: unknown;
-    required?: unknown;
-    placeholder?: unknown;
-    helpText?: unknown;
-    isActive?: unknown;
-    order?: unknown;
+function toFormFieldDTO(field: any): FormFieldDTO {
+  return {
+    id: field.id,
+    formId: field.formId,
+    key: field.key,
+    label: field.label,
+    type: field.type,
+    placeholder: field.placeholder,
+    helpText: field.helpText,
+    required: field.required,
+    order: field.order,
+    config: field.config ?? null,
+    isActive: field.isActive,
   };
+}
 
-  const updateData: Record<string, unknown> = {};
-  let newOrder: number | undefined;
+/**
+ * Hilfsfunktion, um tenantId aus dem AuthContext robust zu lesen.
+ * Unterstützt sowohl auth.tenantId als auch auth.tenant.id.
+ */
+async function getTenantIdFromRequest(req: NextRequest): Promise<number> {
+  const auth = await requireAuthContext(req);
+  const tenantId =
+    (auth as any).tenantId ??
+    (auth as any).tenant?.id ??
+    (auth as any).tenantID;
 
-  if (typeof label === 'string' && label.trim() !== '') {
-    updateData.label = label.trim();
+  if (!tenantId || typeof tenantId !== 'number') {
+    throw new Error('No tenantId found in auth context');
   }
 
-  if (typeof key === 'string' && key.trim() !== '') {
-    updateData.key = key.trim();
-  }
+  return tenantId;
+}
 
-  if (typeof type === 'string' && type.trim() !== '') {
-    updateData.type = type.trim() as any;
-  }
-
-  if (typeof required === 'boolean') {
-    updateData.required = required;
-  }
-
-  if (typeof placeholder === 'string') {
-    updateData.placeholder =
-      placeholder.length > 0 ? placeholder : null;
-  }
-
-  if (typeof helpText === 'string') {
-    updateData.helpText = helpText.length > 0 ? helpText : null;
-  }
-
-  if (typeof isActive === 'boolean') {
-    updateData.isActive = isActive;
-  }
-
-  if ('order' in body) {
-    if (
-      typeof order === 'number' &&
-      Number.isInteger(order) &&
-      order > 0
-    ) {
-      newOrder = order;
-    } else if (order !== undefined) {
-      return jsonError(
-        422,
-        'VALIDATION_ERROR',
-        'Field "order" must be a positive integer',
-        { field: 'order' },
-      );
-    }
-  }
-
-  // Wenn weder Daten noch neue Reihenfolge gesetzt sind → nichts zu tun
-  if (
-    Object.keys(updateData).length === 0 &&
-    typeof newOrder === 'undefined'
-  ) {
-    return jsonError(
-      400,
-      'BAD_REQUEST',
-      'No valid fields to update in request body',
-    );
-  }
-
-  // Auth + Tenant-Kontext
-  const { tenant } = await requireAuthContext(req);
-
-  // Formular im Tenant suchen
-  const form = await prisma.form.findFirst({
-    where: {
-      id: formId,
-      tenantId: tenant.id,
-    },
-    select: {
-      id: true,
-      tenantId: true,
-    },
-  });
-
-  if (!form) {
-    return jsonError(404, 'FORM_NOT_FOUND', 'Form not found');
-  }
-
-  // Feld im Formular/Tenant suchen
-  const existingField = await prisma.formField.findFirst({
-    where: {
-      id: fieldIdNum,
-      formId: form.id,
-      tenantId: tenant.id,
-    },
-  });
-
-  if (!existingField) {
-    return jsonError(404, 'FIELD_NOT_FOUND', 'Field not found');
-  }
-
-  // Fall 1: keine neue order → normales Update
-  if (typeof newOrder === 'undefined') {
-    try {
-      const updated = await prisma.formField.update({
-        where: {
-          id: existingField.id,
-        },
-        data: updateData,
-      });
-
-      return Response.json(updated, { status: 200 });
-    } catch (err: any) {
-      console.error(
-        '[PATCH] /api/admin/forms/:id/fields/:fieldId error',
-        err,
-      );
-
-      if (err?.code === 'P2002') {
-        return jsonError(
-          422,
-          'VALIDATION_ERROR',
-          'Field "key" must be unique per form',
-          { field: 'key' },
-        );
-      }
-
-      return jsonError(
-        500,
-        'INTERNAL_SERVER_ERROR',
-        'Unexpected error while updating field',
-      );
-    }
-  }
-
-  // Fall 2: Reihenfolge ändern (ggf. Kombination mit anderen Updates)
+/**
+ * PATCH /api/admin/forms/[id]/fields/[fieldId]
+ *
+ * Aktualisiert ein einzelnes Feld eines Formulars, inkl. Feld-Config (z. B. Select-Optionen).
+ */
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string; fieldId: string }> },
+) {
   try {
-    const updatedField = await prisma.$transaction(async (tx) => {
-      const fields = await tx.formField.findMany({
-        where: {
-          formId: form.id,
-          tenantId: tenant.id,
-        },
-        orderBy: [
-          { order: 'asc' },
-          { id: 'asc' },
-        ],
-      });
+    const tenantId = await getTenantIdFromRequest(req);
+    const { id, fieldId: fieldIdParam } = await context.params;
 
-      const currentIndex = fields.findIndex(
-        (f) => f.id === existingField.id,
+    const formId = Number(id);
+    const fieldId = Number(fieldIdParam);
+
+    if (Number.isNaN(formId) || Number.isNaN(fieldId)) {
+      return NextResponse.json(
+        { error: 'Invalid formId or fieldId' },
+        { status: 400 },
       );
-      if (currentIndex === -1) {
-        throw new Error('Field not found in ordering list');
-      }
+    }
 
-      const movingField = fields[currentIndex];
-      const remaining = fields.filter((f) => f.id !== movingField.id);
-
-      const maxOrder = fields.length;
-      let targetOrder = newOrder!;
-      if (targetOrder > maxOrder) {
-        targetOrder = maxOrder;
-      }
-      const targetIndex = targetOrder - 1;
-
-      const reordered = [
-        ...remaining.slice(0, targetIndex),
-        movingField,
-        ...remaining.slice(targetIndex),
-      ];
-
-      // Reihenfolge + eventuelles Update auf das bewegte Feld anwenden
-      const updatePromises = reordered.map((field, index) => {
-        const data: Record<string, unknown> = {
-          order: index + 1,
-        };
-
-        if (field.id === movingField.id) {
-          Object.assign(data, updateData);
-        }
-
-        return tx.formField.update({
-          where: { id: field.id },
-          data,
-        });
-      });
-
-      await Promise.all(updatePromises);
-
-      return tx.formField.findFirst({
-        where: {
-          id: movingField.id,
-          formId: form.id,
-          tenantId: tenant.id,
+    // Sicherstellen, dass das Feld zum Formular & Tenant gehört.
+    const existingField = await prisma.formField.findFirst({
+      where: {
+        id: fieldId,
+        formId,
+        form: {
+          tenantId,
         },
-      });
+      },
     });
 
-    return Response.json(updatedField, { status: 200 });
-  } catch (err: any) {
-    console.error(
-      '[PATCH-reorder] /api/admin/forms/:id/fields/:fieldId error',
-      err,
-    );
+    if (!existingField) {
+      return NextResponse.json({ error: 'Field not found' }, { status: 404 });
+    }
 
-    if (err?.code === 'P2002') {
-      return jsonError(
-        422,
-        'VALIDATION_ERROR',
-        'Field "key" must be unique per form',
-        { field: 'key' },
+    const body = await req.json();
+    const parsed = updateFormFieldRequestSchema.parse(body);
+
+    const updateData: Record<string, unknown> = {};
+
+    if (typeof parsed.label === 'string') {
+      updateData.label = parsed.label;
+    }
+    if ('placeholder' in parsed) {
+      updateData.placeholder = parsed.placeholder ?? null;
+    }
+    if ('helpText' in parsed) {
+      updateData.helpText = parsed.helpText ?? null;
+    }
+    if (typeof parsed.required === 'boolean') {
+      updateData.required = parsed.required;
+    }
+    if (typeof parsed.isActive === 'boolean') {
+      updateData.isActive = parsed.isActive;
+    }
+    if (typeof parsed.order === 'number') {
+      updateData.order = parsed.order;
+    }
+
+    // Config-Behandlung:
+    if ('config' in parsed) {
+      const incomingConfig = parsed.config;
+
+      if (isChoiceFieldType(existingField.type)) {
+        // Für Choice-Typen (SELECT, MULTISELECT, RADIO) validieren wir die Options-Struktur
+        // und normalisieren sie anschliessend für die Speicherung.
+        if (incomingConfig === null) {
+          // explizit config entfernen
+          updateData.config = null;
+        } else if (incomingConfig !== undefined) {
+          const validatedConfig = selectFieldConfigSchema.parse(incomingConfig);
+          const normalized = normalizeSelectFieldConfig(validatedConfig);
+          updateData.config = serializeSelectFieldConfig(normalized);
+        }
+      } else {
+        // Nicht-Choice-Feldtypen:
+        // Optional können wir config einfach übernehmen oder bewusst auf null setzen.
+        // Hier: wir übernehmen nur, wenn es ein generisches Objekt ist, ansonsten null.
+        if (incomingConfig === null) {
+          updateData.config = null;
+        } else if (
+          incomingConfig &&
+          typeof incomingConfig === 'object' &&
+          !Array.isArray(incomingConfig)
+        ) {
+          updateData.config = incomingConfig;
+        } else if (incomingConfig !== undefined) {
+          // Dinge wie Arrays/primitive Werte wollen wir nicht als config speichern
+          updateData.config = null;
+        }
+      }
+    }
+
+    const updatedField = await prisma.formField.update({
+      where: { id: existingField.id },
+      data: updateData,
+    });
+
+    const dto = toFormFieldDTO(updatedField);
+
+    return NextResponse.json(dto, { status: 200 });
+  } catch (err) {
+    console.error('Failed to update form field', err);
+
+    if (err instanceof ZodError) {
+      return NextResponse.json(
+        {
+          error: 'Validation failed',
+          details: err.issues,
+        },
+        { status: 400 },
       );
     }
 
-    return jsonError(
-      500,
-      'INTERNAL_SERVER_ERROR',
-      'Unexpected error while reordering field',
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 },
     );
   }
 }
 
 /**
- * DELETE /api/admin/forms/:id/fields/:fieldId
+ * DELETE /api/admin/forms/[id]/fields/[fieldId]
  *
- * Feld endgültig löschen und Reihenfolge der übrigen Felder neu packen.
+ * Entfernt ein einzelnes Feld aus einem Formular.
  */
-export async function DELETE(req: NextRequest, context: RouteContext) {
-  const { id, fieldId } = await context.params;
-  const formId = parseId(id);
-  const fieldIdNum = parseId(fieldId);
-
-  if (!formId || !fieldIdNum) {
-    return jsonError(400, 'BAD_REQUEST', 'Invalid form or field id');
-  }
-
-  const { tenant } = await requireAuthContext(req);
-
-  // Formular und Feld prüfen
-  const form = await prisma.form.findFirst({
-    where: {
-      id: formId,
-      tenantId: tenant.id,
-    },
-    select: {
-      id: true,
-      tenantId: true,
-    },
-  });
-
-  if (!form) {
-    return jsonError(404, 'FORM_NOT_FOUND', 'Form not found');
-  }
-
-  const existingField = await prisma.formField.findFirst({
-    where: {
-      id: fieldIdNum,
-      formId: form.id,
-      tenantId: tenant.id,
-    },
-  });
-
-  if (!existingField) {
-    return jsonError(404, 'FIELD_NOT_FOUND', 'Field not found');
-  }
-
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string; fieldId: string }> },
+) {
   try {
-    await prisma.$transaction(async (tx) => {
-      // Feld löschen
-      await tx.formField.delete({
-        where: {
-          id: existingField.id,
-        },
-      });
+    const tenantId = await getTenantIdFromRequest(req);
+    const { id, fieldId: fieldIdParam } = await context.params;
 
-      // Übrige Felder neu packen (order: 1..n)
-      const remaining = await tx.formField.findMany({
-        where: {
-          formId: form.id,
-          tenantId: tenant.id,
-        },
-        orderBy: [
-          { order: 'asc' },
-          { id: 'asc' },
-        ],
-      });
+    const formId = Number(id);
+    const fieldId = Number(fieldIdParam);
 
-      const reorderPromises = remaining.map((field, index) =>
-        tx.formField.update({
-          where: { id: field.id },
-          data: {
-            order: index + 1,
-          },
-        }),
+    if (Number.isNaN(formId) || Number.isNaN(fieldId)) {
+      return NextResponse.json(
+        { error: 'Invalid formId or fieldId' },
+        { status: 400 },
       );
+    }
 
-      await Promise.all(reorderPromises);
+    const existingField = await prisma.formField.findFirst({
+      where: {
+        id: fieldId,
+        formId,
+        form: {
+          tenantId,
+        },
+      },
     });
 
-    return new Response(null, { status: 204 });
+    if (!existingField) {
+      return NextResponse.json({ error: 'Field not found' }, { status: 404 });
+    }
+
+    await prisma.formField.delete({
+      where: { id: existingField.id },
+    });
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (err) {
-    console.error(
-      '[DELETE] /api/admin/forms/:id/fields/:fieldId error',
-      err,
-    );
-    return jsonError(
-      500,
-      'INTERNAL_SERVER_ERROR',
-      'Unexpected error while deleting field',
+    console.error('Failed to delete form field', err);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 },
     );
   }
 }

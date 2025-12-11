@@ -547,3 +547,9 @@ Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hi
 
 ---
 
+- **2.15 – Admin-Formbuilder: Feld-Config & Select-Optionen**
+  - Einführung einer strukturierten Config für Choice-Felder (`FormField.config.options`).
+  - Zod-Validation & API-Unterstützung für Feld-Config in `PATCH /api/admin/forms/[formId]/fields/[fieldId]`.
+  - Neues Options-UI im Properties-Panel (`FieldOptionsEditor`) inkl. Anlegen, Bearbeiten, Default-Flags, Reihenfolge.
+  - Tablet-Vorschau rendert Select-Felder basierend auf der Options-Config (inkl. Default-Option).
+

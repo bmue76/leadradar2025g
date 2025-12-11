@@ -55,3 +55,57 @@ export const updateFormRequestSchema = createFormRequestSchema.partial();
 
 export type CreateFormRequestDTO = z.infer<typeof createFormRequestSchema>;
 export type UpdateFormRequestDTO = z.infer<typeof updateFormRequestSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Teilprojekt 2.15 – Feld-Config & Select-Optionen                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Config-Schema für Select-/Choice-Felder.
+ * Wird für FormField.config verwendet, wenn der Typ ein Choice-Typ ist.
+ *
+ * JSON-Struktur in FormField.config:
+ * {
+ *   "options": [
+ *     { "id": "opt-1", "label": "Heiss", "value": "hot", "isDefault": true },
+ *     { "id": "opt-2", "label": "Kalt", "value": "cold" }
+ *   ]
+ * }
+ */
+export const selectFieldConfigSchema = z.object({
+  options: z
+    .array(
+      z.object({
+        id: z.string().min(1).optional(), // kann bei Bedarf generiert werden
+        label: z.string().min(1, 'Label darf nicht leer sein'),
+        value: z.string().optional(), // Fallback: wird aus label gesetzt
+        isDefault: z.boolean().optional(),
+      }),
+    )
+    .default([]),
+});
+
+/**
+ * Request-Schema für PATCH /api/admin/forms/[formId]/fields/[fieldId]
+ *
+ * - Alle Properties optional (Partial-Update)
+ * - config ist optional und kann für Choice-Felder ein Select-Config-Objekt sein.
+ */
+export const updateFormFieldRequestSchema = z.object({
+  label: z.string().min(1).optional(),
+  placeholder: z.string().nullable().optional(),
+  helpText: z.string().nullable().optional(),
+  required: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  order: z.number().int().optional(),
+
+  // Für Choice-Felder: Select-Config
+  // Für andere Felder: kann ignoriert werden oder generisch bleiben
+  config: z
+    .union([
+      selectFieldConfigSchema,               // sauber modellierte Select-Config
+      z.record(z.string(), z.unknown()),    // generische Configs für andere Feldtypen
+      z.null(),                              // explizit config löschen
+    ])
+    .optional(),
+});
