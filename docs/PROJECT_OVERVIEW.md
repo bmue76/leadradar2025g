@@ -553,3 +553,12 @@ Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hi
   - Neues Options-UI im Properties-Panel (`FieldOptionsEditor`) inkl. Anlegen, Bearbeiten, Default-Flags, Reihenfolge.
   - Tablet-Vorschau rendert Select-Felder basierend auf der Options-Config (inkl. Default-Option).
 
+---
+
+- **2.16 – Admin-UI: API-Key-Verwaltung & Mobile-Access**
+  - Admin-API für API-Keys (`GET/POST /api/admin/api-keys`, `PATCH /api/admin/api-keys/[id]`)
+  - Admin-Seite `/admin/api-keys` mit Liste, Status-Anzeige & Anzeige eines anonymisierten Key-Prefixes
+  - Dialog zum Erzeugen neuer API-Keys inkl. einmaliger Anzeige des Klartext-Keys und Copy-Button
+  - Toggle für Aktiv/Inaktiv und Dialog zur Umbenennung bestehender API-Keys
+  - Vorbereitung für Mobile-/Integrations-Zugriff via `x-api-key` in späteren Teilprojekten
+
