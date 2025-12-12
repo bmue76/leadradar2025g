@@ -7,6 +7,8 @@ import {
   CHOICE_FIELD_TYPES,
   type FormFieldType,
   type SelectOptionConfig,
+  type ContactSlotKey,
+  type ContactSlotsConfig,
 } from '@/lib/types/forms';
 import { normalizeSelectFieldConfig } from '@/lib/formFieldConfig';
 
@@ -28,6 +30,14 @@ interface FormPreviewTabletLayoutProps {
   fields: PreviewField[];
   activeFieldId?: FieldId | null;
   onFieldClick?: (id: FieldId) => void;
+
+  /**
+   * Teilprojekt 2.17 – Kontaktblock Slot-Mapping (pro Formular)
+   * - undefined / kein key: Slot bleibt sichtbar und fällt auf Heuristik zurück
+   * - number: gemappt auf Field.id
+   * - null: Slot deaktiviert (wird nicht gerendert)
+   */
+  contactSlots?: ContactSlotsConfig | null;
 }
 
 /**
@@ -50,22 +60,130 @@ function getOptionsForField(field: PreviewField): SelectOptionConfig[] {
 /**
  * Ermittelt die Default-Option für ein Feld.
  */
-function getDefaultOption(options: SelectOptionConfig[]): SelectOptionConfig | null {
+function getDefaultOption(
+  options: SelectOptionConfig[],
+): SelectOptionConfig | null {
   if (!options.length) return null;
   const explicit = options.find((opt) => opt.isDefault);
   return explicit ?? options[0];
 }
 
+type SlotResolveMode = 'MAPPED' | 'AUTO' | 'PLACEHOLDER' | 'DISABLED';
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss');
+}
+
+function matchesAny(haystack: string, needles: string[]): boolean {
+  const h = normalizeText(haystack);
+  return needles.some((n) => h.includes(normalizeText(n)));
+}
+
+function resolveAutoField(
+  slot: ContactSlotKey,
+  fields: PreviewField[],
+): PreviewField | null {
+  const patterns: Record<ContactSlotKey, string[]> = {
+    company: ['company', 'firma', 'unternehmen', 'organisation', 'organization', 'org'],
+    firstName: ['firstname', 'first_name', 'vorname', 'given', 'name first'],
+    lastName: ['lastname', 'last_name', 'nachname', 'surname', 'family', 'name last'],
+    phone: ['phone', 'telefon', 'mobile', 'handy', 'tel', 'nummer', 'number'],
+    email: ['email', 'e-mail', 'mail'],
+    notes: ['notes', 'notiz', 'notizen', 'bemerkung', 'bemerkungen', 'kommentar', 'comment'],
+  };
+
+  const candidates = fields.filter((f) => f.isActive !== false);
+  const best =
+    candidates.find((f) => matchesAny(f.key ?? '', patterns[slot])) ??
+    candidates.find((f) => matchesAny(f.label ?? '', patterns[slot])) ??
+    null;
+
+  return best;
+}
+
+function findFieldById(fields: PreviewField[], id: number): PreviewField | null {
+  const sid = String(id);
+  return fields.find((f) => String(f.id) === sid) ?? null;
+}
+
+const SLOT_DEFS: Array<{ key: ContactSlotKey; title: string; variant: 'single' | 'notes' }> =
+  [
+    { key: 'company', title: 'Firma', variant: 'single' },
+    { key: 'firstName', title: 'Vorname', variant: 'single' },
+    { key: 'lastName', title: 'Nachname', variant: 'single' },
+    { key: 'phone', title: 'Telefon', variant: 'single' },
+    { key: 'email', title: 'E-Mail', variant: 'single' },
+    { key: 'notes', title: 'Notizen', variant: 'notes' },
+  ];
+
 const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
   fields,
   activeFieldId,
   onFieldClick,
+  contactSlots,
 }) => {
   const handleFieldClick = (id: FieldId) => {
     if (onFieldClick) onFieldClick(id);
   };
 
   const dynamicFields = fields.filter((f) => f.isActive !== false);
+
+  function resolveSlot(slotKey: ContactSlotKey): {
+    mode: SlotResolveMode;
+    field: PreviewField | null;
+    isDisabled: boolean;
+  } {
+    const cfg = contactSlots ?? undefined;
+
+    // Wenn contactSlots existiert und der Slot explizit null ist -> disabled
+    if (cfg && Object.prototype.hasOwnProperty.call(cfg, slotKey)) {
+      const v = (cfg as any)[slotKey] as number | null | undefined;
+      if (v === null) {
+        return { mode: 'DISABLED', field: null, isDisabled: true };
+      }
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        const mapped = findFieldById(fields, v);
+        if (mapped) return { mode: 'MAPPED', field: mapped, isDisabled: false };
+        // gemappt, aber Feld existiert nicht mehr -> placeholder
+        return { mode: 'PLACEHOLDER', field: null, isDisabled: false };
+      }
+      // undefined => Slot sichtbar, aber nicht gemappt (Auto)
+    }
+
+    const auto = resolveAutoField(slotKey, fields);
+    if (auto) return { mode: 'AUTO', field: auto, isDisabled: false };
+    return { mode: 'PLACEHOLDER', field: null, isDisabled: false };
+  }
+
+  function renderContactCell(title: string, resolved: ReturnType<typeof resolveSlot>) {
+    const hint =
+      resolved.mode === 'MAPPED'
+        ? `↳ ${resolved.field?.label ?? resolved.field?.key ?? 'Feld'}`
+        : resolved.mode === 'AUTO'
+        ? `Auto ↳ ${resolved.field?.label ?? resolved.field?.key ?? 'Feld'}`
+        : resolved.mode === 'PLACEHOLDER'
+        ? '—'
+        : '';
+
+    return (
+      <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {title}
+          </div>
+          {resolved.mode !== 'PLACEHOLDER' && resolved.mode !== 'DISABLED' && (
+            <span className="text-[10px] text-slate-400">{hint}</span>
+          )}
+        </div>
+        <div className="mt-1 h-4 rounded bg-slate-100" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex justify-center">
@@ -164,57 +282,74 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
           </div>
         </div>
 
-        {/* Rechte Spalte – statischer Kontakt-/OCR-Block */}
+        {/* Rechte Spalte – Kontakt/OCR Block (konfigurierbar via contactSlots) */}
         <div className="w-[260px] border-l border-slate-200 bg-slate-100 px-4 py-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Kontaktblock &amp; Notizen
           </h3>
 
           <div className="space-y-2 text-xs">
-            <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Firma
-              </div>
-              <div className="mt-1 h-4 rounded bg-slate-100" />
-            </div>
+            {(() => {
+              const company = resolveSlot('company');
+              if (company.isDisabled) return null;
+              return renderContactCell('Firma', company);
+            })()}
+
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Vorname
+              {(() => {
+                const firstName = resolveSlot('firstName');
+                if (firstName.isDisabled) return <div />;
+                return renderContactCell('Vorname', firstName);
+              })()}
+              {(() => {
+                const lastName = resolveSlot('lastName');
+                if (lastName.isDisabled) return <div />;
+                return renderContactCell('Nachname', lastName);
+              })()}
+            </div>
+
+            {(() => {
+              const phone = resolveSlot('phone');
+              if (phone.isDisabled) return null;
+              return renderContactCell('Telefon', phone);
+            })()}
+
+            {(() => {
+              const email = resolveSlot('email');
+              if (email.isDisabled) return null;
+              return renderContactCell('E-Mail', email);
+            })()}
+
+            {(() => {
+              const notes = resolveSlot('notes');
+              if (notes.isDisabled) return null;
+
+              const hint =
+                notes.mode === 'MAPPED'
+                  ? `↳ ${notes.field?.label ?? notes.field?.key ?? 'Feld'}`
+                  : notes.mode === 'AUTO'
+                  ? `Auto ↳ ${notes.field?.label ?? notes.field?.key ?? 'Feld'}`
+                  : '—';
+
+              return (
+                <div className="mt-3 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Notizen
+                    </div>
+                    {notes.mode !== 'PLACEHOLDER' && (
+                      <span className="text-[10px] text-slate-400">{hint}</span>
+                    )}
+                  </div>
+                  <div className="mt-1 h-20 rounded bg-slate-100" />
                 </div>
-                <div className="mt-1 h-4 rounded bg-slate-100" />
-              </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Nachname
-                </div>
-                <div className="mt-1 h-4 rounded bg-slate-100" />
-              </div>
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Telefon
-              </div>
-              <div className="mt-1 h-4 rounded bg-slate-100" />
-            </div>
-            <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                E-Mail
-              </div>
-              <div className="mt-1 h-4 rounded bg-slate-100" />
-            </div>
-            <div className="mt-3 rounded-md border border-slate-200 bg-white px-2 py-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Notizen
-              </div>
-              <div className="mt-1 h-20 rounded bg-slate-100" />
-            </div>
+              );
+            })()}
           </div>
 
           <div className="mt-4 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            Dieser Bereich symbolisiert OCR-/Kontakt-Daten, die aus Visitenkarte
-            oder manueller Eingabe stammen. Die Logik wird später für die
-            Tablet-App implementiert.
+            Kontaktblock ist jetzt konfigurierbar (Slot-Mapping). Falls kein Mapping
+            gesetzt ist, greift Fallback via Heuristik.
           </div>
         </div>
       </div>

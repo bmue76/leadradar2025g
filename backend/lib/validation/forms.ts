@@ -32,6 +32,30 @@ export const formFieldBaseSchema = z.object({
   config: z.unknown().optional(),
 });
 
+/* -------------------------------------------------------------------------- */
+/*  Teilprojekt 2.17 – FormConfig & Kontakt/OCR Slot-Mapping                  */
+/* -------------------------------------------------------------------------- */
+
+const fieldIdSchema = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+  }
+  return val;
+}, z.number().int().positive());
+
+export const contactSlotsSchema = z.record(
+  z.string(),
+  z.union([fieldIdSchema, z.null()]),
+);
+
+export const formConfigSchema = z
+  .object({
+    // null => contactSlots entfernen (clear), record => Werte setzen/patchen
+    contactSlots: z.union([contactSlotsSchema, z.null()]).optional(),
+  })
+  .passthrough();
+
 /**
  * Request-Schema für das Erstellen eines Formulars (POST /api/admin/forms).
  *
@@ -45,6 +69,9 @@ export const createFormRequestSchema = z.object({
   status: formCreateStatusSchema.optional(),
   slug: z.string().max(255).optional(),
   fields: z.array(formFieldBaseSchema).optional(),
+
+  // Form-Level Config (Teilprojekt 2.17)
+  config: formConfigSchema.optional(),
 });
 
 /**
@@ -103,9 +130,9 @@ export const updateFormFieldRequestSchema = z.object({
   // Für andere Felder: kann ignoriert werden oder generisch bleiben
   config: z
     .union([
-      selectFieldConfigSchema,               // sauber modellierte Select-Config
-      z.record(z.string(), z.unknown()),    // generische Configs für andere Feldtypen
-      z.null(),                              // explizit config löschen
+      selectFieldConfigSchema, // sauber modellierte Select-Config
+      z.record(z.string(), z.unknown()), // generische Configs für andere Feldtypen
+      z.null(), // explizit config löschen
     ])
     .optional(),
 });

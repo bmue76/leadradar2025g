@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuthContext, AuthError } from '@/lib/auth';
 import type { Prisma } from '@prisma/client';
+import { formConfigSchema } from '@/lib/validation/forms';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,14 @@ function jsonError(
       ...(details ? { details } : {}),
     },
     { status },
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value)
   );
 }
 
@@ -99,7 +108,8 @@ export async function GET(req: NextRequest, context: any) {
  *   "title": "Neuer Name",          // -> Form.name
  *   "description": "Beschreibung",  // -> Form.description
  *   "status": "DRAFT" | "ACTIVE" | "ARCHIVED",
- *   "slug": "neuer-slug"
+ *   "slug": "neuer-slug",
+ *   "config": { ... }              // -> Form.config (Teilprojekt 2.17)
  * }
  *
  * Mindestens ein gültiges Feld muss enthalten sein.
@@ -138,6 +148,7 @@ export async function PATCH(req: NextRequest, context: any) {
           description?: unknown;
           status?: unknown;
           slug?: unknown;
+          config?: unknown;
         }
       | null;
 
@@ -232,6 +243,67 @@ export async function PATCH(req: NextRequest, context: any) {
 
       data.slug = trimmed;
       hasChanges = true;
+    }
+
+    // config (Teilprojekt 2.17)
+    if (Object.prototype.hasOwnProperty.call(body, 'config')) {
+      const rawConfig = body.config;
+
+      if (rawConfig === null) {
+        // kompletter Reset
+        (data as any).config = null;
+        hasChanges = true;
+      } else if (isPlainObject(rawConfig)) {
+        const parsed = formConfigSchema.safeParse(rawConfig);
+
+        if (!parsed.success) {
+          return jsonError(
+            'Invalid config',
+            400,
+            'VALIDATION_ERROR',
+            parsed.error.format(),
+          );
+        }
+
+        const existingConfig = (existingForm as any).config;
+        const base =
+          isPlainObject(existingConfig) ? (existingConfig as Record<string, unknown>) : {};
+
+        const incoming = parsed.data as Record<string, unknown>;
+
+        // shallow merge
+        const merged: Record<string, unknown> = { ...base, ...incoming };
+
+        // deep-ish merge für contactSlots, damit partielle Updates möglich sind
+        if (Object.prototype.hasOwnProperty.call(incoming, 'contactSlots')) {
+          const incomingSlots = (incoming as any).contactSlots;
+
+          if (incomingSlots === null) {
+            delete (merged as any).contactSlots;
+          } else if (isPlainObject(incomingSlots)) {
+            const prevSlots =
+              isPlainObject((base as any).contactSlots) ? (base as any).contactSlots : {};
+            (merged as any).contactSlots = { ...prevSlots, ...incomingSlots };
+          } else if (typeof incomingSlots === 'undefined') {
+            // nichts
+          } else {
+            return jsonError(
+              'Invalid config.contactSlots',
+              400,
+              'VALIDATION_ERROR',
+            );
+          }
+        }
+
+        (data as any).config = merged;
+        hasChanges = true;
+      } else {
+        return jsonError(
+          'Config, if provided, must be an object or null',
+          400,
+          'VALIDATION_ERROR',
+        );
+      }
     }
 
     if (!hasChanges) {

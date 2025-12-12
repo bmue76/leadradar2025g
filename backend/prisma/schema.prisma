@@ -107,6 +107,9 @@ model Form {
   slug        String?
   version     Int        @default(1)
 
+  // JSON-Konfiguration für Form-spezifische Einstellungen (z. B. Kontaktblock-Slot-Mapping)
+  config      Json?
+
   createdByUserId Int?
   createdByUser   User?   @relation("FormsCreated", fields: [createdByUserId], references: [id])
 

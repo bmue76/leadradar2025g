@@ -24,6 +24,28 @@ export type FormFieldType =
   | 'TIME'
   | 'NOTE';
 
+/* -------------------------------------------------------------------------- */
+/*  Form-Level Config (Teilprojekt 2.17 – Kontakt/OCR Slot-Mapping)            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Kontaktblock-Slots (erweiterbar).
+ * Mapping-Wert ist die FormField.id (number) oder null (deaktiviert).
+ */
+export type ContactSlotKey =
+  | 'company'
+  | 'firstName'
+  | 'lastName'
+  | 'phone'
+  | 'email'
+  | 'notes';
+
+export type ContactSlotsConfig = Partial<Record<ContactSlotKey, number | null>>;
+
+export interface FormConfig {
+  contactSlots?: ContactSlotsConfig;
+}
+
 /**
  * Repräsentiert ein einzelnes Feld eines Formulars auf API-/UI-Ebene.
  * Basierend auf dem Prisma-Model FormField, aber bewusst schlank gehalten.
@@ -60,6 +82,9 @@ export interface FormDTO {
   status: FormStatus;
   slug?: string | null;
   version: number;
+
+  // Form-Level JSON Config (z. B. Kontaktblock Slot-Mapping)
+  config?: FormConfig | null;
 
   createdAt: string; // ISO-String auf API-Ebene
   updatedAt: string; // ISO-String auf API-Ebene

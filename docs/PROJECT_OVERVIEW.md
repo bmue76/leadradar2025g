@@ -1,7 +1,7 @@
 # LeadRadar2025g – Projektübersicht
 
 SaaS-Lösung zur digitalen Leaderfassung auf Messen.  
-Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQL, später Admin-UI und Mobile-App.
+Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQL, Admin-UI und später Mobile-App.
 
 ---
 
@@ -9,7 +9,7 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
 
 - **Backend / API**
   - Next.js 16 App Router im Ordner `backend/`
-  - TypeScript, API-Routen unter `app/api/...`
+  - TypeScript, API-Routen unter `backend/app/api/...`
 - **Datenbank**
   - PostgreSQL
   - Prisma 7 als ORM
@@ -19,573 +19,208 @@ Backend-first-Ansatz mit Next.js App Router (API-only Backend), Prisma/PostgreSQ
   - Seed mit Demo-Tenant/-User (z. B. `x-user-id: 1`)
 - **Admin-UI**
   - Route-Group `(admin)` mit `/admin/...`
-  - Mischung aus Server Components (Daten-Fetching) und Client Components (Tabellen, Dialoge)
+  - Mischung aus Server Components (Daten-Fetching) und Client Components (Builder, Tabellen, Dialoge)
 - **Mobile-App (geplant)**
   - Eigenes Expo/React Native Projekt (Phase 3.x)
+  - Mobile API ist bereits versioniert `/api/mobile/v1/...` mit DTOs + Mappern
+
+---
+
+## Status-Legende
+
+✅ abgeschlossen 🟡 in Arbeit ⚪ geplant
 
 ---
 
 ## Backend-Teilprojekte (1.x)
 
-### 1.0 – Backend Foundation
-
-**Ziel:** Basisprojekt mit Next.js & Prisma lauffähig machen.
-
-**Ergebnis:**
-
-- Next.js-App unter `backend/` aufgesetzt.
-- TypeScript-, ESLint- und Basis-Konfiguration eingerichtet.
-- Prisma 7 an PostgreSQL angebunden (Schema, Client-Generierung).
-- Lokales Dev-Setup unter Windows (VS Code, Git Bash, `npm run dev`) verifiziert.
+### 1.0 – Backend Foundation ✅
+**Ziel:** Basisprojekt mit Next.js & Prisma lauffähig machen.  
+**Ergebnis:** Next.js/TS/ESLint Setup, Prisma/Postgres, Dev-Setup verifiziert.
 
 ---
 
-### 1.1 – Auth & Tenant Handling
-
-**Ziel:** Einfache Mandantenfähigkeit + Auth-Kontext.
-
-**Ergebnis:**
-
-- Modelle:
-  - `Tenant` (Mandant)
-  - `User` mit Referenz auf `tenantId`
-- Utility:
-  - `requireAuthContext(req)`:
-    - liest `x-user-id`-Header,
-    - lädt User + Tenant,
-    - gibt 401/403 bei ungültigem Kontext zurück.
-- Seed:
-  - Demo-Tenant und Demo-User (z. B. `x-user-id: 1`) angelegt.
-- Scope:
-  - Admin-Routen arbeiten konsequent tenant-scope (kein Cross-Tenant-Zugriff).
+### 1.1 – Auth & Tenant Handling ✅
+**Ziel:** Einfache Mandantenfähigkeit + Auth-Kontext.  
+**Ergebnis:** `Tenant`, `User`, `requireAuthContext(req)` (x-user-id), konsequentes Tenant-Scoping.
 
 ---
 
-### 1.2 – Datenmodell & Prisma-Schema (Forms & Leads Core)
-
-**Ziel:** Kern-Domain für Formulare & Leads modellieren.
-
+### 1.2 – Datenmodell & Prisma-Schema (Forms & Leads Core) ✅
+**Ziel:** Kern-Domain für Formulare & Leads modellieren.  
 **Ergebnis (Auszug):**
-
-- Prisma-Modelle:
-  - `Form`
-    - Bezug zu `Tenant`
-    - Metadaten wie `name`, `description`, `status` (`FormStatus`), optional `slug` etc.
-  - `FormField`
-    - Bezug zu `Tenant` & `Form`
-    - Felder wie `key`, `label`, `type` (`FormFieldType`), `required`, `placeholder`,
-      `helpText`, `order`, `config`, `isActive`
-  - `Lead`
-    - Bezug zu `Tenant` & `Form`
-    - speichert `values` (JSON) plus `source`, `createdByUserId`, Timestamps
-- Enums (Beispiele):
-  - `FormStatus` (z. B. `DRAFT`, `ACTIVE`, `ARCHIVED`, …)
-  - `FormFieldType` (z. B. `TEXT`, `EMAIL`, `PHONE`, `NUMBER`, `TEXTAREA`, `SELECT`, `CHECKBOX`, …)
-- Migrationen:
-  - Prisma-Migrationen ausgeführt, Schema in der DB verankert.
-- Seed & Typen:
-  - Demo-Formulare und Test-Leads angelegt.
-  - DTOs / Typen in `lib/types/forms.ts` (z. B. `FormDto`, `FormFieldDto`, `LeadDto`, `CreateLeadRequest`).
+- Modelle: `Form`, `FormField`, `Lead`
+- Enums: `FormStatus`, `FormFieldType`
+- DTOs/Typen: `backend/lib/types/forms.ts`
 
 ---
 
-### 1.3 – API-Basis & Routing (Forms & Leads)
-
-**Ziel:** Tenant-sichere API für Formularverwaltung und Lead-Anlage.
-
+### 1.3 – API-Basis & Routing (Forms & Leads) ✅
+**Ziel:** Tenant-sichere API für Formularverwaltung und Lead-Anlage.  
 **Ergebnis (Auszug):**
-
-- **Admin-API (authentifiziert, tenant-scope)**
-  - `GET /api/admin/forms` – Liste aller Formulare eines Tenants.
-  - `POST /api/admin/forms` – neues Formular anlegen.
-  - `GET /api/admin/forms/[id]` – Formular-Detail (inkl. Feldern).
-  - `PATCH /api/admin/forms/[id]` – Formular-Metadaten bearbeiten.
-  - `DELETE /api/admin/forms/[id]` – Formular löschen (v. a. für Test/Demo).
-  - `GET /api/admin/forms/[id]/leads` – Lead-Liste zu einem Formular.
-- **Public-/Mobile-API**
-  - `GET /api/forms/[id]/active` – aktives Formular inkl. Feldern.
-  - `POST /api/leads` – Lead anlegen:
-    - Payload: `{ formId, values: { [fieldKey]: value } }`
-    - Validierung der Pflichtfelder anhand `FormField.key` + `required`.
-    - Speicherung der Werte in `Lead.values` (JSON).
-- **Technische Eckpunkte**
-  - DTOs für Admin- und Public-API wiederverwendet.
-  - Alle Admin-Routen nutzen `requireAuthContext` und filtern nach `tenantId`.
-  - Konsistente Fehlerstruktur (`error`, `message`, optional `details`).
+- Admin: `GET/POST /api/admin/forms`, `GET/PATCH/DELETE /api/admin/forms/[id]`, `GET /api/admin/forms/[id]/leads`
+- Public: `GET /api/forms/[id]/active`, `POST /api/leads` (Lead.values als JSON)
 
 ---
 
-### 1.4 – Leads: E-Mail-Flows (Danke & Innendienst)
-
-**Ziel:** Nach Lead-Erfassung automatisierte E-Mail-Flows auslösen.
-
-**Ergebnis:**
-
-- Zentrale Mail-Infrastruktur in `lib/mail.ts` mit Provider-Switch:
-  - `MAIL_PROVIDER=console` – simuliert Versand und loggt nur.
-  - `MAIL_PROVIDER=resend` – Versand via Resend-API.
-- Template-Funktionen in `lib/mail-templates.ts`:
-  - `buildThankYouEmail({ lead, form, tenant })`
-  - `buildInternalLeadNotification({ lead, form, tenant })`
-- Orchestrierung der Flows in `lib/lead-email-flows.ts`:
-  - `handleLeadCreatedEmailFlows({ lead, form, tenant })`
-  - Aufruf im `POST /api/leads`-Handler.
-- Konfiguration über `.env`:
-  - Flags für Danke-Mail / Innendienst-Benachrichtigung,
-  - Default-Absender, interne Empfänger usw.
+### 1.4 – Leads: E-Mail-Flows (Danke & Innendienst) ✅
+**Ziel:** Nach Lead-Erfassung automatisierte E-Mail-Flows auslösen.  
+**Ergebnis:** Mail-Infrastruktur (Provider Switch), Templates, Orchestrierung in `POST /api/leads`.
 
 ---
 
-## Teilprojekt 1.5 – Stripe Billing & Access Control (Backend)
-
-- Neues Prisma-Datenmodell `Subscription` mit `SubscriptionStatus`-Enum und Relation zu `Tenant`.
-- Stripe-Anbindung via `lib/stripe.ts` mit env-basierten Keys & Helpern.
-- Auth-Kontext `requireAuthContext` für API-Routen auf Basis von `x-user-id` + Tenant.
-- Checkout-Endpoint `POST /api/billing/create-checkout-session`:
-  - Prüft bestehende aktive Abos.
-  - Erstellt Stripe Checkout Session mit Abo-Price und Tenant-Metadaten.
-- Webhook-Endpoint `POST /api/billing/webhook`:
-  - Verifiziert Signatur.
-  - Reagiert auf `customer.subscription.*`-Events.
-  - Upsert der Subscription in der DB.
-- Subscription-Helpers in `lib/subscription.ts`:
-  - `isSubscriptionActive`, `getCurrentSubscriptionForTenant`, `hasActiveSubscription`, `requireActiveSubscription`.
-- Status-Endpoint `GET /api/admin/billing/status`:
-  - Liefert Abo-Status + Flags für die Admin-UI.
-- Aktuell sind Stripe-Keys noch Dummy-Werte; Umstellung auf echte Test-Keys folgt kurz vor Beta.
-
+### 1.5 – Stripe Billing & Access Control (Backend) ✅
+**Ergebnis (Auszug):**
+- Modell `Subscription` + Enum `SubscriptionStatus`
+- Stripe Helper `lib/stripe.ts`, Webhooks, Checkout
+- Endpoint `GET /api/admin/billing/status`
+- Hinweis: aktuell noch Dummy-Keys; echte Test-Keys folgen vor Beta.
 
 ---
 
-## Schritt 19 – `docs/PROJECT_OVERVIEW.md` aktualisieren
-
-Da ich den bisherigen Inhalt nicht sehe, bekommst du eine **vollständige, konsistente Version**, die du entweder als neue Basis nimmst oder manuell mit deiner bestehenden Datei mergen kannst.
-
-**Tool:** VS Code  
-**Ziel:** Teilprojekt 1.6 im Gesamtüberblick verankern.
-
-**Aktion:**
-
-1. Öffne  
-   `C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`
-
-2. Ersetze den Inhalt durch diesen Vorschlag (oder füge zumindest den Block zu 1.6 hinzu, wenn du manuell mergen willst):
-
-```md
-# LeadRadar2025g – Project Overview
-
-Backend-first Rebuild der LeadRadar-Plattform mit sauberem Multi-Tenant-Backend, Admin-UI und späterer Mobile-App-Anbindung.
+### 1.6 – Events (Messen) + Formular-Bindung ✅
+**Ergebnis (Auszug):**
+- Modelle: `Event`, `EventForm`, `Lead.eventId` (optional)
+- Admin: Event-CRUD + Form-Zuordnung
+- Grundlage für mobile Event-/Form-Auswahl.
 
 ---
 
-## 1.x – Backend (Core & APIs)
-
-**Status-Legende:**  
-✅ abgeschlossen 🟡 in Arbeit ⚪ geplant
-
-- ✅ **1.0 – Projektsetup & Grundstruktur**
-  - Next.js App Router, TypeScript, Prisma/PostgreSQL.
-  - Basis-Struktur für `app/`, `lib/`, `prisma/`, `docs/`.
-- ✅ **1.1 – Multi-Tenant Core**
-  - Modelle `Tenant`, `User`.
-  - `requireAuthContext(req)` mit `x-user-id`.
-  - Tenant-Scoping für alle relevanten Queries.
-- ✅ **1.2 – Forms & FormFields Core**
-  - Modelle `Form`, `FormField`.
-  - Admin-API für CRUD auf Forms und FormFields.
-- ✅ **1.3 – Leads Core & Public API**
-  - Modell `Lead`.
-  - `POST /api/leads` (Public), `GET /api/admin/forms/[id]/leads` (Admin).
-- ✅ **1.4 – Leads – E-Mail-Flows**
-  - Danke-Mail an Lead.
-  - Info-Mail an Innendienst (konfigurierbare Adressen).
-- ✅ **1.6 – Events (Messen), Formular-Bindung & Mobile-API**
-  - Neues Modell `Event` + Enum `EventStatus`.
-  - Join-Tabelle `EventForm` (Formulare an Events binden, `isPrimary`).
-  - `Lead` mit optionaler `eventId`.
-  - Admin-Endpoints:
-    - `GET /api/admin/events`
-    - `POST /api/admin/events`
-    - `GET /api/admin/events/[id]`
-    - `PATCH /api/admin/events/[id]`
-    - `GET /api/admin/events/[id]/forms`
-    - `POST /api/admin/events/[id]/forms`
-  - Mobile-Endpoints:
-    - `GET /api/mobile/events?tenantSlug=...`
-    - `GET /api/mobile/events/[id]/forms`
-- ✅ **1.7 – Leads – Export & CSV**
-  - CSV-Export pro Form mit konfigurierbaren Spalten.
-  - Admin-Endpoint `GET /api/admin/forms/[id]/leads/export`.
+### 1.8 – Backend Security & Hardening (Rate Limiting, API-Keys & Validation) ✅
+**Ergebnis (Auszug):**
+- Prisma Model `ApiKey` (Tenant Relation, Hash, Active, lastUsedAt)
+- API-Key Context: `requireApiKeyContext(req)` via `x-api-key`
+- In-Memory Rate Limiting (globalThis store)
+- Rate Limits auf Public-/Mobile-Endpunkten
+- Validations via Zod.
 
 ---
 
-## 2.x – Admin-UI
-
-- ✅ **2.1 – Admin-Basics & Navigation**
-  - Erste Admin-Seiten für Forms & Leads.
-- ✅ **2.2 – FormFields-CRUD & Reihenfolge**
-  - Verwaltung von Feldern pro Form.
-  - Sortierung per Drag & Drop.
-- ✅ **2.3 – Leads-Listen & Export**
-  - Tabellenansicht aller Leads pro Form.
-  - CSV-Export-Knopf im UI.
-- ✅ **2.4 – Layout-Shell & Sidebar-Navigation**
-  - Persistente Admin-Layout-Shell mit Sidebar.
-- ✅ **2.5 – Admin-Formbuilder – Builder-View & Vorschau (Basis)**
-  - Erster Builder-Workspace mit Vorschau.
-- ✅ **2.6 – FormDetail & Builder fusionieren (Basis)**
-  - Vereinheitlichung von Detailansicht und Builder.
-- ✅ **2.7 – Properties-Panel & Feldbearbeitung**
-  - Rechtsseitiges Properties-Panel für FormFields.
-- 🟡 **2.9 – Admin-Formbuilder – Tablet-Layout & App-nahe Vorschau**
-  - Zwei-Spalten-Layout (links dynamische Fragen, rechts Kontaktblock).
-  - Ziel: App-nahe Tablet-Vorschau für späteres Mobile-UI.
-
----
-
-## 3.x – Mobile (Preview, später eigenes Projekt)
-
-- ⚪ **3.0 – Mobile-API-Integration**
-  - Nutzung von `GET /api/mobile/events` und `GET /api/mobile/events/[id]/forms`.
-  - Formulardaten in Mobile-App synchronisieren.
-- ⚪ **3.1 – Offline-Lead-Erfassung**
-  - Lokale Speicherung + späterer Sync gegen Backend.
-
----
-
-## Stand nach Teilprojekt 1.6
-
-- **Events (Messen) sind als eigene Entität im Backend verankert.**
-- **Formulare können flexibel pro Event konfiguriert** werden (inkl. Primary-Form).
-- **Leads können einem Event zugeordnet** werden, ohne bestehende Daten zu brechen.
-- Die **Mobile-API** bietet jetzt eine saubere Grundlage, um pro Tenant:
-  - aktive Events anzuzeigen,
-  - pro Event die passenden Formulare (inkl. Primary-Form) zu laden.
-
-Details & API-Contracts siehe:  
-➡ `docs/teilprojekt-1.6-events.md`
-
----
-
-### 1.7 – Backend Exports (CSV & Download-API)
-
-**Ziel:** CSV-Export von Leads für Formular-Owner.
-
-**Ergebnis:**
-
-- Admin-Export-Endpoint:
-  - `GET /api/admin/forms/[id]/leads/export`
-  - tenant-scope via `requireAuthContext`.
-- CSV:
-  - UTF-8 (mit BOM), Semikolon als Trennzeichen,
-  - dynamische Spalten basierend auf FormFields des Formulars.
-- Schutz:
-  - Limitierung auf eine maximale Anzahl Leads je Export (Fehlercode bei Überschreitung).
-- Optional:
-  - Globaler Tenant-Export (`/api/admin/leads/export`) als TODO vorgesehen.
-
----
-
-### 1.8 – Backend – Security & Hardening (Rate Limiting, API-Keys & Validation)
-
-- Neues Prisma-Model `ApiKey` inkl. Relation zu `Tenant`:
-  - Felder: `id`, `tenantId`, `name`, `keyHash`, `isActive`, `createdAt`, `updatedAt`, `lastUsedAt`.
-- Zentrale API-Key-Helpers in `lib/api-keys.ts`:
-  - `generateApiKeyForTenant({ tenantId, name })` generiert einen Klartext-Key und speichert nur den Hash.
-  - `resolveTenantByApiKey(rawKey)` resolved `tenant` + `apiKey` über den Hash und setzt `lastUsedAt`.
-  - `requireApiKeyContext(req)` liest `x-api-key` und liefert einen `ApiKeyContext` (Tenant + ApiKey).
-- In-Memory Rate Limiting in `lib/rate-limit.ts`:
-  - `checkRateLimit({ key, windowMs, maxRequests })` mit globalem Store auf `globalThis`.
-  - `getClientIp(req)` extrahiert IP/Client-ID über `x-forwarded-for`, `x-real-ip`, Fallback `host`.
-- Aktive Rate Limits auf Public-/Mobile-Endpoints:
-  - `POST /api/leads` → 30 Requests/Minute pro Client (IP oder `x-api-key`).
-  - `GET /api/forms/[id]` → 60 Requests/Minute pro Client.
-  - `GET /api/mobile/events` → 120 Requests/Minute pro Client.
-  - `GET /api/mobile/events/[id]()
-
----
-
-### Teilprojekt 1.9 – Mobile-API: API-Key-Auth & Access Control ✅
-
-- Policy: Mobile-/Integrations-Endpunkte sind API-Key-pflichtig (Header `x-api-key`)
-- Tenant-Scope: Alle Mobile-Zugriffe strikt über `tenantId` aus ApiKeyContext
-- Endpoints abgesichert:
-  - GET `/api/mobile/events`
-  - GET `/api/mobile/events/:id/forms`
-  - GET `/api/forms/:id`
-  - POST `/api/leads`
-- Rate Limiting: pro API-Key (tenantId+apiKeyId) + zusätzlich IP (Dual-Rate-Limit)
-- Konsistente Fehlerresponses: `{ error, code, details? }` + `Retry-After` bei 429
+### 1.9 – Mobile-API: API-Key-Auth & Access Control ✅
+**Ergebnis (Auszug):**
+- Policy: Mobile-/Integrations-Endpunkte sind API-Key-pflichtig (`x-api-key`)
+- Tenant-Scope strikt über ApiKeyContext
+- Dual Rate Limit (API-Key + IP)
+- Konsistente Fehler `{ error, code, details? }` + `Retry-After` bei 429
 - Doku: `docs/teilprojekt-1.9-mobile-api-api-keys.md`
 
-**Geänderte/Neue Files (Auszug):**
-- `backend/lib/api-keys.ts`
-- `backend/lib/api-rate-limit.ts`
-- `backend/lib/api-response.ts`
-- `backend/app/api/mobile/events/route.ts`
-- `backend/app/api/mobile/events/[id]/forms/route.ts`
-- `backend/app/api/forms/[id]/route.ts`
-- `backend/app/api/leads/route.ts`
-- `backend/docs/teilprojekt-1.9-mobile-api-api-keys.md`
-
 ---
 
-
----
-
-## Teilprojekt 1.10 – Mobile-API: Contracts & Versioning (v1) ✅
-- Mobile DTOs (lib/types/mobile.ts)
-- Prisma → DTO Mapper (lib/mobile-mappers.ts)
-- v1 Routes:
-  - GET /api/mobile/v1/events
-  - GET /api/mobile/v1/events/[id]/forms
-  - GET /api/mobile/v1/forms/[id]
-  - POST /api/mobile/v1/leads
-- Contract-Doku: docs/teilprojekt-1.10-mobile-api-contracts-v1.md
-- Hinweis: Next.js params sind Promise (Next 16)
-- Unversionierte Endpunkte bleiben bestehen, v1 ist bevorzugt
-
----
-
-### 2.1 – Admin-UI: Forms-CRUD (List & Detail)
-
-**Ziel:** Grundlegende Formular-Verwaltung im Admin-Bereich.
-
-**Ergebnis:**
-
-- Route-Group `(admin)` mit Einstiegspunkt:
-  - `/admin` – Dashboard / Überblick.
-- Formularverwaltung:
-  - `/admin/forms` – Liste der Formulare (Name, Status, Meta).
-  - Aktionen: Formular anlegen, bearbeiten, ggf. löschen (abhängig von Business-Regeln).
-- Detailseite:
-  - `/admin/forms/[id]` – Formular-Detail mit:
-    - Metadaten (Name, Beschreibung, Status, Timestamps),
-    - Status-Badge,
-    - read-only Liste der zugehörigen `FormField`s (Stand 2.1),
-    - Link zur Lead-Übersicht des Formulars.
-- Datenquelle:
-  - `GET /api/admin/forms`
-  - `GET /api/admin/forms/[id]`
-- Tech/UX:
-  - Server Components für Daten-Fetching.
-  - Erste Client-Komponenten (Buttons, Navigation).
-  - Saubere 404-/Fehlerbehandlung.
-
----
-
-### 2.2 – Admin-UI: FormFields-CRUD & Reihenfolge
-
-**Ziel:** Vollständiges Feld-Management je Formular inkl. Reihenfolge-Steuerung.
-
+### 1.10 – Mobile-API: Contracts & Versioning (v1) ✅
 **Ergebnis (Auszug):**
-
-- **Admin-API für FormFields**
-  - `GET /api/admin/forms/[id]/fields`
-    - liefert alle Felder eines Formulars in definierter Sortierung (`order`, `id`).
-  - `POST /api/admin/forms/[id]/fields`
-    - legt ein neues Feld an,
-    - `order` wird ans Ende der bestehenden Liste vergeben.
-  - `PATCH /api/admin/forms/[id]/fields/[fieldId]`
-    - Stammdaten-Update (`label`, `key`, `type`, `required`, `placeholder`, `helpText`, `isActive`),
-    - Reihenfolge-Update via `order` (1-basiert) inkl. Repack der Reihenfolge.
-  - `DELETE /api/admin/forms/[id]/fields/[fieldId]`
-    - Hard Delete eines Feldes.
-- **UI auf `/admin/forms/[id]`**
-  - Tabelle „Felder“ mit Spalten: `Order`, `Label`, `Key`, `Typ`, `Required`, `Aktiv`, Aktionen.
-  - Aktionen pro Feld:
-    - Bearbeiten (Modal-Form),
-    - Löschen (Confirm-Dialog),
-    - Aktiv/Deaktiv,
-    - Reihenfolge ändern per Up/Down und Drag & Drop.
-- **UX & Robustheit**
-  - Validierung im Modal (Pflichtfelder).
-  - Loading/Busy-States und saubere Fehlermeldungen.
-  - Re-Fetch der Liste nach Mutationen, keine „Zombie“-States.
+- Mobile DTOs: `backend/lib/types/mobile.ts`
+- Prisma → DTO Mapper: `backend/lib/mobile-mappers.ts`
+- v1 Routes:
+  - `GET /api/mobile/v1/events`
+  - `GET /api/mobile/v1/events/[id]/forms`
+  - `GET /api/mobile/v1/forms/[id]`
+  - `POST /api/mobile/v1/leads`
+- Contract-Doku: `docs/teilprojekt-1.10-mobile-api-contracts-v1.md`
 
 ---
 
-### 2.3 – Admin-UI: Leads-Listen & Export
+## Admin-UI Teilprojekte (2.x)
 
-**Ziel:** Formular-spezifische Lead-Ansicht im Admin inkl. Export.
-
-**Ergebnis:**
-
-- Neue Seite `/admin/forms/[id]/leads`:
-  - Tabelle mit Leads (ID, Zeitstempel, Quelle, zentrale Werte-Preview).
-  - einfache Pagination (`page`/`limit`).
-  - CSV-Export-Button, der `GET /api/admin/forms/[id]/leads/export` nutzt.
-- Placeholder `/admin/leads`:
-  - Verhindert 404,
-  - verweist auf die Formular-spezifischen Lead-Ansichten.
-- Konsistentes Zusammenspiel von UI, Admin-API und Export-Endpoint.
+### 2.1 – Admin-UI: Forms-CRUD (List & Detail) ✅
+- `/admin/forms` Liste, `/admin/forms/[id]` Detail
+- Datenquelle: `GET /api/admin/forms`, `GET /api/admin/forms/[id]`
 
 ---
 
-### 2.4 – Admin-UI: Layout-Shell & Sidebar-Navigation
-
-**Ziel:** Konsistente Layout-Shell für alle Admin-Seiten mit persistenter Sidebar.
-
-**Ergebnis:**
-
-- Neues Layout in `app/(admin)/admin/layout.tsx`:
-  - Flex-Layout über die gesamte Höhe:
-    - Mobile: `flex-col` (Sidebar oben, Content darunter),
-    - Desktop: `flex-row` (Sidebar links, Content rechts).
-  - Content-Bereich (`<main>`):
-    - eigener Scroll-Container (`overflow-y-auto`),
-    - Innenabstände und max. Breite (`max-w-6xl`, Padding).
-- Neue Komponente `app/(admin)/admin/AdminSidebar.tsx`:
-  - Titel/Logo-Block „LeadRadar Admin“.
-  - Navigationsliste mit Einträgen:
-    - **Dashboard** → `/admin`
-    - **Formulare** → `/admin/forms` + alle Unterrouten (`/admin/forms/[id]`, `/admin/forms/[id]/leads`, …)
-    - **Leads** → `/admin/leads` (+ geplante globale Leads-Ansichten)
-    - **Exporte** → `/admin/exports` (Platzhalter)
-    - **Einstellungen** → `/admin/settings` (Platzhalter)
-  - Active-State auf Basis von `usePathname()`:
-    - aktueller Menüpunkt bekommt hervorgehobenes Styling (Hintergrund, Border, Font-Weight).
-  - Responsives Verhalten:
-    - Mobile: vollständige Breite, unterer Border,
-    - Desktop: feste Breite (`md:w-64`), rechter Border, volle Höhe mit eigenem Scroll (`md:h-screen md:overflow-y-auto`).
+### 2.2 – Admin-UI: FormFields-CRUD & Reihenfolge ✅
+- Feldverwaltung inkl. Reihenfolge (persistiert über `order`)
+- Admin API: `PATCH /api/admin/forms/[id]/fields/[fieldId]` (u. a. order)
 
 ---
 
-## Ausblick / Nächste sinnvolle Teilprojekte
-
-- **2.5+ – Admin-UI: Formbuilder & Presets**
-  - Visueller Formbuilder für Felder, Layout und Validierungen.
-  - Speichern & Wiederverwenden von Form-Vorlagen (Use Cases wie „Messe-Lead“, „Produktfeedback“, …).
-- **2.x – Erweiterte Lead-Ansichten**
-  - Filter, Suche, Tagging, Detail-Ansichten.
-  - Engere Verzahnung mit Exporten und E-Mail-Flows.
-- **3.x – Mobile-App**
-  - Expo/React Native-App zur Leaderfassung.
-  - Offline-Funktionalität (lokales Caching + Sync), QR-/Barcode-Scanning, Visitenkarten-Erfassung.
-- **4.x – Billing & Abos**
-  - Stripe-Integration für Mandanten-Abos.
-  - Feature-Freischaltungen abhängig vom Abo-Status (Anzahl Formulare, Leads, Nutzer, …).
-
-  ---
-
-  ### Stand nach Teilprojekt 2.6 – FormDetail & Builder fusionieren (Basis)
-
-- `/admin/forms/[id]` ist jetzt der **zentrale Formbuilder-Workspace** für ein Formular.
-- Die Seite kombiniert:
-  - Workspace-Header mit Navigation (Zur Formularliste, Leads anzeigen),
-  - kompakte Meta-Infos (ID, Status, Beschreibung),
-  - einen visuellen **Formbuilder-Bereich** (Feldliste + Vorschau),
-  - sowie die **technische Feldtabelle (Legacy)** für Feld-CRUD & Reihenfolge.
-- `/admin/forms/[id]/builder` existiert nur noch als **Legacy-Redirect** auf `/admin/forms/[id]`.
-- Der Builder liest die Felder aus dem Backend und spiegelt Änderungen aus der Feldtabelle automatisch wider.
-- 2.6 bildet die Basis für künftige Erweiterungen:
-  - 1:1 Tablet-Layout als Standardvorlage,
-  - Properties-Panel im Builder,
-  - Drag & Drop im Layout,
-  - Template-Auswahl für Kunden.
+### 2.3 – Admin-UI: Leads-Listen & Export ✅
+- `/admin/forms/[id]/leads` + Export-Button (CSV)
 
 ---
 
-### Stand nach Teilprojekt 2.7 – Admin-Formbuilder: Properties-Panel & Feldbearbeitung
-
-- `/admin/forms/[id]` ist der zentrale Formbuilder-Workspace:
-  - linke Spalte: Feldliste (Auswahl des aktiven Feldes),
-  - rechte Spalte: Vorschau (klickbare Felder) + Properties-Panel.
-- Im Properties-Panel können folgende Eigenschaften eines Feldes direkt im Builder editiert und gespeichert werden:
-  - Label, Placeholder, Help-Text,
-  - Pflichtfeld (`required`),
-  - Aktiv/Inaktiv (`isActive`).
-- Persistenz läuft über die bestehende Admin-API:
-  - `PATCH /api/admin/forms/[formId]/fields/[fieldId]` mit `x-user-id`.
-- UX-Details:
-  - Klick in die Vorschau oder Feldliste wählt das aktive Feld,
-  - Save-Button ist nur aktiv bei tatsächlichen Änderungen,
-  - Erfolg- & Fehlermeldungen werden direkt im Panel angezeigt.
-- Linke Spalte ist bewusst für zukünftige globale Form-/CD-Settings reserviert
-  (Theme, Farben, Komponenten-Defaults, später Drag & Drop etc.).
-- Die Legacy-Feldtabelle (`FormFieldsTable`) bleibt weiterhin als technische Ansicht unterhalb des Builders bestehen.
+### 2.4 – Admin-UI: Layout-Shell & Sidebar-Navigation ✅
+- Layout: `app/(admin)/admin/layout.tsx`
+- Sidebar Navigation, Active-State via `usePathname()`
 
 ---
 
-### Stand nach Teilprojekt 2.9 – Admin-Formbuilder: Tablet-Layout & App-nahe Vorschau
-
-- Die Vorschau im Admin-Formbuilder nutzt nun ein **zweispaltiges Tablet-Layout**:
-  - Linke Spalte: dynamische Formularfelder mit Drag & Drop und persistierter Reihenfolge.
-  - Rechte Spalte: heuristisch erkannter Kontakt-/OCR-Block mit typischen Kontaktfeldern
-    (Firma, Vorname, Nachname, Telefon, E-Mail, Notizen).
-- Die Vorschau hängt am gleichen Datenstrom wie Feldliste und Properties-Panel:
-  - Klicks in Liste und Tablet-Vorschau sind synchron,
-  - Änderungen an Label, Placeholder, Help-Text, Required, isActive werden direkt übernommen.
-- Die Reihung aus der Feldliste beeinflusst primär die dynamischen Felder (links),
-  während der Kontaktblock (rechts) eine eigene, feste Slot-Reihenfolge besitzt.
+### 2.5 – Admin-Formbuilder: Workspace-Basis ✅
+- `/admin/forms/[id]` als zentraler Workspace (Builder + Preview)
 
 ---
 
-**Ziel:** Projektübersicht um Teilprojekt 2.10 erweitern.
-
-### Aktion
-
-Öffne:  
-`C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`
-
-Füge im Abschnitt zu den **Admin-UI-Teilprojekten (2.x)** einen neuen Bullet hinzu, z. B. direkt nach 2.9:
-
-```md
-- **2.9 – Admin-Formbuilder – Tablet-Layout & App-nahe Vorschau**  
-  Formbuilder-Workspace mit Tablet-Preview, DnD, Properties-Panel, app-naher Ansicht.
-
-- **2.10 – Admin-UI – Events (Liste, Detail & Formular-Bindung)**  
-  Events im Admin-Bereich sichtbar gemacht: eigene Events-Liste, Event-Detailseite mit Meta-Infos, read-only Formular-Zuordnung und Basis-Editing für Name, Zeitraum und Status. Admin-Events-Endpoints auf Next.js-16-params-Modell angepasst.
+### 2.6 – FormDetail & Builder fusionieren ✅
+- `/admin/forms/[id]` ist zentrale Builder-Seite
+- Legacy Redirects/Altseiten entkoppelt
 
 ---
 
-| Nr.  | Bereich   | Titel                                           | Status | Datei                                                   |
-| ---- | --------- | ----------------------------------------------- | ------ | ------------------------------------------------------- |
-| 2.11 | Admin-UI  | Event-Erstellung & Formular-Bindung             | erledigt | `teilprojekt-2.11-admin-ui-event-erstellung-formbinding.md` |
+### 2.7 – Admin-Formbuilder: Properties-Panel & Feldbearbeitung ✅
+- Inline Editing (Label, Placeholder, HelpText, required, isActive)
+- Persistenz via `PATCH /api/admin/forms/[formId]/fields/[fieldId]`
 
 ---
 
-### Teilprojekt 2.12 – Admin-UI: Event-Leads-Ansicht & CSV-Export
-
-- Neue Admin-Seite `/admin/events/[id]/leads`:
-  - Event-spezifische Leads-Übersicht (alle Leads mit `eventId` des Events).
-  - Tabelle mit Datum/Zeit, Quelle, Name, E-Mail, Firma und Werte-Preview.
-  - Pagination über `page` und `limit` (Query-Parameter in der URL).
-  - Navigation zurück zur Event-Detailseite (`/admin/events/[id]`).
-- Backend-Endpoint `GET /api/admin/events/[id]/leads`:
-  - Liefert paginierte Leads im JSON-Format.
-  - Optionaler CSV-Export über `?format=csv` (inkl. Datefilter `from`/`to`).
-  - CSV nutzt bestehende Export-Logik (`buildLeadsCsv`) und exportiert Leads des **primären Event-Formulars**.
-- CSV-Export-Button in der Event-Leads-Seite:
-  - Client Component `EventLeadsExportButton`.
-  - Ruft den CSV-Export mit `x-user-id`-Header auf und triggert einen File-Download.
+### 2.8 – Admin-Formbuilder: Drag & Drop Reihenfolge ✅
+- Sortierung im Workspace, Persistenz via `order`
 
 ---
 
-- **Teilprojekt 2.13 – Admin-UI: Billing-Übersicht & Abo-Start**  
-  `/admin/billing` zeigt den aktuellen Abo-Status des Tenants (Subscription-Status, Price-ID, Periodenende) und bietet einen „Abo starten / verwalten“-Button, der den Stripe-Checkout-Flow aus Teilprojekt 1.5 anstößt. Stripe ist aktuell noch nicht produktiv konfiguriert, die UI ist jedoch vorbereitet.
+### 2.9 – Admin-Formbuilder: Tablet-Layout & App-nahe Vorschau ✅
+- Zweispaltige Vorschau: links dynamische Felder, rechts Kontakt/OCR-Block (bisher heuristisch/placeholder)
 
 ---
 
-- **2.14 – Admin-UI: Globale Leads-Übersicht & Filter**  
-  Globale Übersicht aller Leads eines Tenants unter `/admin/leads`.  
-  Backend-Endpoint `GET /api/admin/leads` mit Pagination, Event/Form-Filter und Zeitraum.  
-  Admin-Seite zeigt alle Leads mit Basis-Infos (Datum, Event, Formular, Name, Firma, E-Mail, Quelle, Values-Preview) und ermöglicht Seitenwechsel & Filterung.
+### 2.10 – Admin-UI: Events (Liste, Detail & Formular-Bindung) ✅
+- `/admin/events` Liste, `/admin/events/[id]` Detail
+- Basis Editing + Formular-Zuordnung (je nach Stand)
 
 ---
 
-- **2.15 – Admin-Formbuilder: Feld-Config & Select-Optionen**
-  - Einführung einer strukturierten Config für Choice-Felder (`FormField.config.options`).
-  - Zod-Validation & API-Unterstützung für Feld-Config in `PATCH /api/admin/forms/[formId]/fields/[fieldId]`.
-  - Neues Options-UI im Properties-Panel (`FieldOptionsEditor`) inkl. Anlegen, Bearbeiten, Default-Flags, Reihenfolge.
-  - Tablet-Vorschau rendert Select-Felder basierend auf der Options-Config (inkl. Default-Option).
+### 2.11 – Admin-UI: Event-Erstellung & Formular-Bindung ✅
+- Event Create + Zuordnung primäres Formular (je nach Stand)
 
 ---
 
-- **2.16 – Admin-UI: API-Key-Verwaltung & Mobile-Access**
-  - Admin-API für API-Keys (`GET/POST /api/admin/api-keys`, `PATCH /api/admin/api-keys/[id]`)
-  - Admin-Seite `/admin/api-keys` mit Liste, Status-Anzeige & Anzeige eines anonymisierten Key-Prefixes
-  - Dialog zum Erzeugen neuer API-Keys inkl. einmaliger Anzeige des Klartext-Keys und Copy-Button
-  - Toggle für Aktiv/Inaktiv und Dialog zur Umbenennung bestehender API-Keys
-  - Vorbereitung für Mobile-/Integrations-Zugriff via `x-api-key` in späteren Teilprojekten
+### 2.13 – Admin-UI: Billing-Übersicht & „Abo starten“-Button ✅
+- `/admin/billing` zeigt Status (aus 1.5) und triggert Checkout (Keys aktuell noch nicht produktiv)
+
+---
+
+### 2.14 – Admin-UI: Globale Leads-Übersicht & Filter ✅
+- `/admin/leads` globale Leads Liste inkl. Filter (Event/Form/Zeitraum)
+
+---
+
+### 2.15 – Admin-Formbuilder: Feld-Config & Select-Optionen ✅
+- Strukturierte Options-Config in `FormField.config.options`
+- Zod-Validation + UI Editor + Preview Rendermodus für Choice-Felder
+
+---
+
+### 2.16 – Admin-UI: API-Key-Verwaltung & Mobile-Access ✅
+- `/admin/api-keys` UI + Admin API
+- Create/Toggle/Rename, einmalige Klartext-Key Anzeige
+
+---
+
+### 2.17 – Admin-Formbuilder: Kontakt/OCR Slot-Mapping (konfigurierbar) ✅
+**Ziel:** Kontaktblock nicht mehr heuristisch, sondern pro Formular konfigurierbar (Fallback auf Heuristik).  
+**Ergebnis (Auszug):**
+- **Datenmodell:** `Form.config` (Json?) ergänzt; `config.contactSlots` speichert Slot → `FormField.id` oder `null`
+- **API:** `PATCH /api/admin/forms/[id]` erweitert um `config` inkl. Validation und Merge
+- **Admin-UI:** Inspector Tab „Kontaktblock“ mit Slot-Toggles, Dropdown (Auto/Feld/Deaktiviert), Dirty Tracking + Save
+- **Preview:** Kontaktblock rendert anhand `contactSlots` (Mapped/Auto/Disabled) mit Fallback
+- **DX Fix:** dnd-kit Hydration-Mismatch gelöst, indem DnD erst nach Client-Mount gerendert wird (SSR-safe)
+
+Doku: `docs/teilprojekt-2.17-admin-formbuilder-kontakt-slot-mapping.md`
+
+---
+
+## Stand nach Teilprojekt 2.17
+
+- Der Admin-Formbuilder kann den Kontaktblock pro Formular **konfigurierbar** mappen (Firma/Vorname/Nachname/Telefon/E-Mail/Notizen).
+- Bestehende Formulare brechen nicht: fehlt Mapping → Fallback (Auto/Heuristik).
+- Persistenz über `Form.config` (JSON) – Migration vorhanden.
+- DnD im Builder ist SSR-stabil (keine Hydration-Warnings).
 
