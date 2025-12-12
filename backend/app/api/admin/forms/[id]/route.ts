@@ -109,7 +109,7 @@ export async function GET(req: NextRequest, context: any) {
  *   "description": "Beschreibung",  // -> Form.description
  *   "status": "DRAFT" | "ACTIVE" | "ARCHIVED",
  *   "slug": "neuer-slug",
- *   "config": { ... }              // -> Form.config (Teilprojekt 2.17)
+ *   "config": { ... }              // -> Form.config (Teilprojekt 2.17 / 2.18)
  * }
  *
  * Mindestens ein gültiges Feld muss enthalten sein.
@@ -245,7 +245,7 @@ export async function PATCH(req: NextRequest, context: any) {
       hasChanges = true;
     }
 
-    // config (Teilprojekt 2.17)
+    // config (Teilprojekt 2.17 / 2.18)
     if (Object.prototype.hasOwnProperty.call(body, 'config')) {
       const rawConfig = body.config;
 
@@ -271,10 +271,10 @@ export async function PATCH(req: NextRequest, context: any) {
 
         const incoming = parsed.data as Record<string, unknown>;
 
-        // shallow merge
+        // shallow merge (top-level config keys)
         const merged: Record<string, unknown> = { ...base, ...incoming };
 
-        // deep-ish merge für contactSlots, damit partielle Updates möglich sind
+        // deep-ish merge für contactSlots (Teilprojekt 2.17), damit partielle Updates möglich sind
         if (Object.prototype.hasOwnProperty.call(incoming, 'contactSlots')) {
           const incomingSlots = (incoming as any).contactSlots;
 
@@ -289,6 +289,27 @@ export async function PATCH(req: NextRequest, context: any) {
           } else {
             return jsonError(
               'Invalid config.contactSlots',
+              400,
+              'VALIDATION_ERROR',
+            );
+          }
+        }
+
+        // deep-ish merge für theme (Teilprojekt 2.18), damit partielle Updates möglich sind
+        if (Object.prototype.hasOwnProperty.call(incoming, 'theme')) {
+          const incomingTheme = (incoming as any).theme;
+
+          if (incomingTheme === null) {
+            delete (merged as any).theme;
+          } else if (isPlainObject(incomingTheme)) {
+            const prevTheme =
+              isPlainObject((base as any).theme) ? (base as any).theme : {};
+            (merged as any).theme = { ...prevTheme, ...incomingTheme };
+          } else if (typeof incomingTheme === 'undefined') {
+            // nichts
+          } else {
+            return jsonError(
+              'Invalid config.theme',
               400,
               'VALIDATION_ERROR',
             );

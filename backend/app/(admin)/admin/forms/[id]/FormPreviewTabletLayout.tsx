@@ -11,6 +11,7 @@ import {
   type ContactSlotsConfig,
 } from '@/lib/types/forms';
 import { normalizeSelectFieldConfig } from '@/lib/formFieldConfig';
+import { normalizeTheme } from '@/lib/formTheme';
 
 type FieldId = string | number;
 
@@ -38,6 +39,11 @@ interface FormPreviewTabletLayoutProps {
    * - null: Slot deaktiviert (wird nicht gerendert)
    */
   contactSlots?: ContactSlotsConfig | null;
+
+  /**
+   * Teilprojekt 2.18 – Theme / Branding (Roh oder normalisiert; wird defensiv normalisiert)
+   */
+  theme?: unknown | null;
 }
 
 /**
@@ -60,9 +66,7 @@ function getOptionsForField(field: PreviewField): SelectOptionConfig[] {
 /**
  * Ermittelt die Default-Option für ein Feld.
  */
-function getDefaultOption(
-  options: SelectOptionConfig[],
-): SelectOptionConfig | null {
+function getDefaultOption(options: SelectOptionConfig[]): SelectOptionConfig | null {
   if (!options.length) return null;
   const explicit = options.find((opt) => opt.isDefault);
   return explicit ?? options[0];
@@ -84,10 +88,7 @@ function matchesAny(haystack: string, needles: string[]): boolean {
   return needles.some((n) => h.includes(normalizeText(n)));
 }
 
-function resolveAutoField(
-  slot: ContactSlotKey,
-  fields: PreviewField[],
-): PreviewField | null {
+function resolveAutoField(slot: ContactSlotKey, fields: PreviewField[]): PreviewField | null {
   const patterns: Record<ContactSlotKey, string[]> = {
     company: ['company', 'firma', 'unternehmen', 'organisation', 'organization', 'org'],
     firstName: ['firstname', 'first_name', 'vorname', 'given', 'name first'],
@@ -111,22 +112,64 @@ function findFieldById(fields: PreviewField[], id: number): PreviewField | null 
   return fields.find((f) => String(f.id) === sid) ?? null;
 }
 
-const SLOT_DEFS: Array<{ key: ContactSlotKey; title: string; variant: 'single' | 'notes' }> =
-  [
-    { key: 'company', title: 'Firma', variant: 'single' },
-    { key: 'firstName', title: 'Vorname', variant: 'single' },
-    { key: 'lastName', title: 'Nachname', variant: 'single' },
-    { key: 'phone', title: 'Telefon', variant: 'single' },
-    { key: 'email', title: 'E-Mail', variant: 'single' },
-    { key: 'notes', title: 'Notizen', variant: 'notes' },
-  ];
+function resolveFontStack(name: string): string {
+  const sys = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  const n = (name ?? '').trim();
+
+  if (!n || n.toLowerCase() === 'system') return sys;
+
+  // Für späteres echtes Laden ok – jetzt ist es nur ein "Name".
+  return `"${n}", ${sys}`;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  let h = (hex ?? '').trim();
+  if (!h) return `rgba(0,0,0,${alpha})`;
+  if (!h.startsWith('#')) h = `#${h}`;
+  h = h.toLowerCase();
+
+  // #rgb
+  if (h.length === 4) {
+    const r = parseInt(h[1] + h[1], 16);
+    const g = parseInt(h[2] + h[2], 16);
+    const b = parseInt(h[3] + h[3], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // #rrggbb or #rrggbbaa
+  if (h.length === 7 || h.length === 9) {
+    const r = parseInt(h.slice(1, 3), 16);
+    const g = parseInt(h.slice(3, 5), 16);
+    const b = parseInt(h.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  return `rgba(0,0,0,${alpha})`;
+}
 
 const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
   fields,
   activeFieldId,
   onFieldClick,
   contactSlots,
+  theme: themeRaw,
 }) => {
+  const theme = React.useMemo(() => normalizeTheme(themeRaw ?? undefined), [themeRaw]);
+
+  const fontFamily = React.useMemo(
+    () => resolveFontStack(theme.fontFamily),
+    [theme.fontFamily],
+  );
+
+  const ui = React.useMemo(() => {
+    return {
+      panelMutedBg: hexToRgba(theme.muted, 0.06),
+      inputBg: hexToRgba(theme.muted, 0.08),
+      placeholderBg: hexToRgba(theme.muted, 0.12),
+      activeBg: hexToRgba(theme.primary, 0.10),
+    };
+  }, [theme.muted, theme.primary]);
+
   const handleFieldClick = (id: FieldId) => {
     if (onFieldClick) onFieldClick(id);
   };
@@ -171,39 +214,77 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
         : '';
 
     return (
-      <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+      <div
+        className="rounded-md border px-2 py-1.5"
+        style={{
+          borderColor: theme.border,
+          backgroundColor: theme.surface,
+        }}
+      >
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          <div
+            className="text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: theme.muted }}
+          >
             {title}
           </div>
           {resolved.mode !== 'PLACEHOLDER' && resolved.mode !== 'DISABLED' && (
-            <span className="text-[10px] text-slate-400">{hint}</span>
+            <span className="text-[10px]" style={{ color: theme.muted }}>
+              {hint}
+            </span>
           )}
         </div>
-        <div className="mt-1 h-4 rounded bg-slate-100" />
+        <div
+          className="mt-1 h-4 rounded"
+          style={{ backgroundColor: ui.placeholderBg }}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex justify-center">
-      <div className="flex h-[530px] w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-inner">
+      <div
+        className="flex h-[530px] w-full max-w-4xl overflow-hidden rounded-2xl border shadow-inner"
+        style={{
+          borderColor: theme.border,
+          backgroundColor: theme.background,
+          color: theme.text,
+          fontFamily,
+        }}
+      >
         {/* Linke Spalte – dynamische Formularfelder */}
-        <div className="flex-1 border-r border-slate-200 bg-white px-4 py-4">
+        <div
+          className="flex-1 border-r px-4 py-4"
+          style={{
+            borderColor: theme.border,
+            backgroundColor: theme.surface,
+          }}
+        >
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <h3
+              className="text-xs font-semibold uppercase tracking-wide"
+              style={{ color: theme.muted }}
+            >
               Formularfelder
             </h3>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px]" style={{ color: theme.muted }}>
               Vorschau – nicht interaktiv
             </span>
           </div>
 
           <div className="flex h-full flex-col gap-3 overflow-auto pr-1 text-sm">
             {dynamicFields.length === 0 && (
-              <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-                Noch keine Felder definiert. Lege links im Formbuilder Felder
-                an, um hier die Vorschau zu sehen.
+              <div
+                className="mt-4 rounded-md border border-dashed p-3 text-xs"
+                style={{
+                  borderColor: theme.border,
+                  backgroundColor: ui.panelMutedBg,
+                  color: theme.muted,
+                }}
+              >
+                Noch keine Felder definiert. Lege links im Formbuilder Felder an,
+                um hier die Vorschau zu sehen.
               </div>
             )}
 
@@ -214,9 +295,16 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
 
               const baseWrapperClasses =
                 'rounded-md border px-3 py-2 transition-colors cursor-pointer';
-              const wrapperClasses = isActive
-                ? `${baseWrapperClasses} border-sky-500 bg-sky-50`
-                : `${baseWrapperClasses} border-slate-200 bg-white hover:border-sky-300`;
+
+              const wrapperStyle: React.CSSProperties = isActive
+                ? {
+                    borderColor: theme.primary,
+                    backgroundColor: ui.activeBg,
+                  }
+                : {
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface,
+                  };
 
               // Choice-Felder → Options aus config lesen
               const isChoice = isChoiceFieldTypeFrontend(field.type ?? undefined);
@@ -226,17 +314,21 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
               return (
                 <div
                   key={String(field.id)}
-                  className={wrapperClasses}
+                  className={baseWrapperClasses + (isActive ? '' : ' hover:opacity-95')}
+                  style={wrapperStyle}
                   onClick={() => handleFieldClick(field.id)}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-medium text-slate-800">
+                    <label className="text-xs font-medium" style={{ color: theme.text }}>
                       {label}{' '}
                       {field.required && (
-                        <span className="text-rose-600">*</span>
+                        <span style={{ color: '#e11d48' }}>*</span>
                       )}
                     </label>
-                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <span
+                      className="text-[10px] uppercase tracking-wide"
+                      style={{ color: theme.muted }}
+                    >
                       {type}
                     </span>
                   </div>
@@ -245,13 +337,25 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
                   <div className="mt-1">
                     {isChoice ? (
                       options.length === 0 ? (
-                        <div className="rounded border border-dashed border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                        <div
+                          className="rounded border border-dashed px-2 py-1 text-[11px]"
+                          style={{
+                            borderColor: hexToRgba(theme.primary, 0.35),
+                            backgroundColor: hexToRgba(theme.primary, 0.08),
+                            color: theme.muted,
+                          }}
+                        >
                           [Keine Optionen definiert]
                         </div>
                       ) : (
                         <select
                           disabled
-                          className="mt-1 w-full cursor-default rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs text-slate-700"
+                          className="mt-1 w-full cursor-default rounded-md border px-2 py-1.5 text-xs"
+                          style={{
+                            borderColor: theme.border,
+                            backgroundColor: ui.inputBg,
+                            color: theme.text,
+                          }}
                           value={defaultOption?.value ?? ''}
                         >
                           {options.map((opt) => (
@@ -265,14 +369,19 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
                     ) : (
                       <input
                         disabled
-                        className="mt-1 w-full cursor-default rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs text-slate-700"
+                        className="mt-1 w-full cursor-default rounded-md border px-2 py-1.5 text-xs"
+                        style={{
+                          borderColor: theme.border,
+                          backgroundColor: ui.inputBg,
+                          color: theme.text,
+                        }}
                         placeholder={field.placeholder ?? ''}
                       />
                     )}
                   </div>
 
                   {field.helpText && (
-                    <p className="mt-1 text-[11px] text-slate-500">
+                    <p className="mt-1 text-[11px]" style={{ color: theme.muted }}>
                       {field.helpText}
                     </p>
                   )}
@@ -283,8 +392,17 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
         </div>
 
         {/* Rechte Spalte – Kontakt/OCR Block (konfigurierbar via contactSlots) */}
-        <div className="w-[260px] border-l border-slate-200 bg-slate-100 px-4 py-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div
+          className="w-[260px] border-l px-4 py-4"
+          style={{
+            borderColor: theme.border,
+            backgroundColor: ui.panelMutedBg,
+          }}
+        >
+          <h3
+            className="mb-3 text-xs font-semibold uppercase tracking-wide"
+            style={{ color: theme.muted }}
+          >
             Kontaktblock &amp; Notizen
           </h3>
 
@@ -332,24 +450,45 @@ const FormPreviewTabletLayout: React.FC<FormPreviewTabletLayoutProps> = ({
                   : '—';
 
               return (
-                <div className="mt-3 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                <div
+                  className="mt-3 rounded-md border px-2 py-1.5"
+                  style={{
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface,
+                  }}
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    <div
+                      className="text-[10px] font-semibold uppercase tracking-wide"
+                      style={{ color: theme.muted }}
+                    >
                       Notizen
                     </div>
                     {notes.mode !== 'PLACEHOLDER' && (
-                      <span className="text-[10px] text-slate-400">{hint}</span>
+                      <span className="text-[10px]" style={{ color: theme.muted }}>
+                        {hint}
+                      </span>
                     )}
                   </div>
-                  <div className="mt-1 h-20 rounded bg-slate-100" />
+                  <div
+                    className="mt-1 h-20 rounded"
+                    style={{ backgroundColor: ui.placeholderBg }}
+                  />
                 </div>
               );
             })()}
           </div>
 
-          <div className="mt-4 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            Kontaktblock ist jetzt konfigurierbar (Slot-Mapping). Falls kein Mapping
-            gesetzt ist, greift Fallback via Heuristik.
+          <div
+            className="mt-4 rounded-md border border-dashed px-3 py-2 text-[11px]"
+            style={{
+              borderColor: theme.border,
+              backgroundColor: theme.background,
+              color: theme.muted,
+            }}
+          >
+            Kontaktblock ist konfigurierbar (Slot-Mapping). Falls kein Mapping gesetzt ist,
+            greift Fallback via Heuristik.
           </div>
         </div>
       </div>

@@ -224,3 +224,12 @@ Doku: `docs/teilprojekt-2.17-admin-formbuilder-kontakt-slot-mapping.md`
 - Persistenz über `Form.config` (JSON) – Migration vorhanden.
 - DnD im Builder ist SSR-stabil (keine Hydration-Warnings).
 
+---
+
+### Teilprojekt 2.18 – Admin-Formbuilder – Design Kit (Theme/Branding) ✅
+- Form.config.theme eingeführt (Defaults + Normalisierung)
+- Validation: theme = object | null, Hex-Farben validiert
+- Admin-UI: Neuer Tab „Design“ (Color Picker + Font + Logo URL)
+- Live Preview im Tablet-Layout; Speichern & Reset; Default => theme:null (clear)
+
+

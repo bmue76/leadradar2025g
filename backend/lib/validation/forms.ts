@@ -33,7 +33,41 @@ export const formFieldBaseSchema = z.object({
 });
 
 /* -------------------------------------------------------------------------- */
+/*  Teilprojekt 2.18 – Theme / Branding                                       */
+/* -------------------------------------------------------------------------- */
+
+const hexColorSchema = z
+  .string()
+  .trim()
+  .transform((s) => {
+    const t = s.trim();
+    if (t.length === 0) return t;
+    const withHash = t.startsWith('#') ? t : `#${t}`;
+    return withHash.toLowerCase();
+  })
+  .refine(
+    (s) => /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(s),
+    'Invalid hex color',
+  );
+
+export const formThemeSchema = z
+  .object({
+    background: hexColorSchema.optional(),
+    surface: hexColorSchema.optional(),
+    primary: hexColorSchema.optional(),
+    text: hexColorSchema.optional(),
+    muted: hexColorSchema.optional(),
+    border: hexColorSchema.optional(),
+
+    // bewusst: darf leer sein, damit "löschen" via "" möglich ist (Merge überschreibt)
+    fontFamily: z.string().trim().optional(),
+    logoUrl: z.string().trim().optional(),
+  })
+  .passthrough();
+
+/* -------------------------------------------------------------------------- */
 /*  Teilprojekt 2.17 – FormConfig & Kontakt/OCR Slot-Mapping                  */
+/*  + Teilprojekt 2.18 – Theme                                                */
 /* -------------------------------------------------------------------------- */
 
 const fieldIdSchema = z.preprocess((val) => {
@@ -53,6 +87,9 @@ export const formConfigSchema = z
   .object({
     // null => contactSlots entfernen (clear), record => Werte setzen/patchen
     contactSlots: z.union([contactSlotsSchema, z.null()]).optional(),
+
+    // null => theme entfernen (clear), object => Werte setzen/patchen
+    theme: z.union([formThemeSchema, z.null()]).optional(),
   })
   .passthrough();
 
@@ -70,7 +107,7 @@ export const createFormRequestSchema = z.object({
   slug: z.string().max(255).optional(),
   fields: z.array(formFieldBaseSchema).optional(),
 
-  // Form-Level Config (Teilprojekt 2.17)
+  // Form-Level Config (Teilprojekt 2.17 / 2.18)
   config: formConfigSchema.optional(),
 });
 

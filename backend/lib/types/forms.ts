@@ -26,6 +26,7 @@ export type FormFieldType =
 
 /* -------------------------------------------------------------------------- */
 /*  Form-Level Config (Teilprojekt 2.17 – Kontakt/OCR Slot-Mapping)            */
+/*  + Teilprojekt 2.18 – Theme / Branding                                     */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -42,8 +43,27 @@ export type ContactSlotKey =
 
 export type ContactSlotsConfig = Partial<Record<ContactSlotKey, number | null>>;
 
+/**
+ * Teilprojekt 2.18 – Form Theme / Branding (pro Formular)
+ *
+ * Farben sind als Hex-Strings vorgesehen (z. B. #0ea5e9).
+ * FontFamily ist vorerst nur ein Name/Label (echtes Font-Loading später).
+ * logoUrl ist vorerst nur eine URL (Upload später).
+ */
+export interface FormTheme {
+  background?: string;
+  surface?: string;
+  primary?: string;
+  text?: string;
+  muted?: string;
+  border?: string;
+  fontFamily?: string;
+  logoUrl?: string;
+}
+
 export interface FormConfig {
   contactSlots?: ContactSlotsConfig;
+  theme?: FormTheme;
 }
 
 /**
@@ -83,7 +103,7 @@ export interface FormDTO {
   slug?: string | null;
   version: number;
 
-  // Form-Level JSON Config (z. B. Kontaktblock Slot-Mapping)
+  // Form-Level JSON Config (z. B. Kontaktblock Slot-Mapping, Theme/Branding)
   config?: FormConfig | null;
 
   createdAt: string; // ISO-String auf API-Ebene

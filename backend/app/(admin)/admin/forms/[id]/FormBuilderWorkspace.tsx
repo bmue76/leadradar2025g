@@ -19,6 +19,7 @@ import {
 import FormPreviewTabletLayout from './FormPreviewTabletLayout';
 import { FieldOptionsEditor } from './FieldOptionsEditor';
 import type { ContactSlotKey, ContactSlotsConfig } from '@/lib/types/forms';
+import { DEFAULT_FORM_THEME, normalizeTheme } from '@/lib/formTheme';
 
 type FieldId = string | number;
 
@@ -54,7 +55,7 @@ interface FormBuilderWorkspaceProps {
   initialFields?: FormFieldLike[];
 }
 
-type InspectorTab = 'field' | 'contact';
+type InspectorTab = 'field' | 'contact' | 'design';
 
 const CONTACT_SLOTS: Array<{ key: ContactSlotKey; label: string }> = [
   { key: 'company', label: 'Firma' },
@@ -63,6 +64,38 @@ const CONTACT_SLOTS: Array<{ key: ContactSlotKey; label: string }> = [
   { key: 'phone', label: 'Telefon' },
   { key: 'email', label: 'E-Mail' },
   { key: 'notes', label: 'Notizen' },
+];
+
+type ThemeDraft = {
+  background: string;
+  surface: string;
+  primary: string;
+  text: string;
+  muted: string;
+  border: string;
+  fontFamily: string;
+  logoUrl: string; // bewusst immer string fürs Input ("" = kein Logo)
+};
+
+const THEME_COLOR_FIELDS: Array<{
+  key: keyof Pick<ThemeDraft, 'background' | 'surface' | 'primary' | 'text' | 'muted' | 'border'>;
+  label: string;
+  hint: string;
+}> = [
+  { key: 'background', label: 'Hintergrund', hint: 'App Background' },
+  { key: 'surface', label: 'Surface', hint: 'Panels / Cards' },
+  { key: 'primary', label: 'Primary', hint: 'Buttons / Highlights' },
+  { key: 'text', label: 'Text', hint: 'Primärtext' },
+  { key: 'muted', label: 'Muted', hint: 'Secondary / Hint Text' },
+  { key: 'border', label: 'Border', hint: 'Linien / Trennungen' },
+];
+
+const FONT_FAMILY_OPTIONS = [
+  { value: 'System', label: 'System' },
+  { value: 'Inter', label: 'Inter' },
+  { value: 'Roboto', label: 'Roboto' },
+  { value: 'Oxygen', label: 'Oxygen' },
+  { value: 'Arial', label: 'Arial' },
 ];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -296,6 +329,59 @@ function SortableFieldListItem(props: {
   );
 }
 
+function isValidHexColor(value: string): boolean {
+  const t = (value ?? '').trim();
+  if (!t) return false;
+  const s = t.startsWith('#') ? t.slice(1) : t;
+  return /^[0-9a-fA-F]{3}$/.test(s) || /^[0-9a-fA-F]{6}$/.test(s) || /^[0-9a-fA-F]{8}$/.test(s);
+}
+
+function normalizeHex(value: string): string {
+  const t = (value ?? '').trim();
+  const withHash = t.startsWith('#') ? t : `#${t}`;
+  return withHash.toLowerCase();
+}
+
+function toColorPickerValue(value: string, fallback: string): string {
+  const v = (value ?? '').trim();
+  const f = (fallback ?? '#000000').trim();
+
+  const pick = (input: string): string | null => {
+    if (!isValidHexColor(input)) return null;
+    const n = normalizeHex(input);
+    // Color input kann kein Alpha: #rrggbbaa -> #rrggbb
+    if (n.length === 9) return n.slice(0, 7);
+    // #rgb -> ok (Browser akzeptiert meist nur #rrggbb, aber viele konvertieren intern)
+    // wir konvertieren #rgb -> #rrggbb für Stabilität:
+    if (n.length === 4) {
+      const r = n[1];
+      const g = n[2];
+      const b = n[3];
+      return `#${r}${r}${g}${g}${b}${b}`;
+    }
+    return n;
+  };
+
+  return pick(v) ?? pick(f) ?? '#000000';
+}
+
+function shallowEqualThemeDraft(a: ThemeDraft, b: ThemeDraft): boolean {
+  const keys: Array<keyof ThemeDraft> = [
+    'background',
+    'surface',
+    'primary',
+    'text',
+    'muted',
+    'border',
+    'fontFamily',
+    'logoUrl',
+  ];
+  for (const k of keys) {
+    if ((a[k] ?? '').toString() !== (b[k] ?? '').toString()) return false;
+  }
+  return true;
+}
+
 export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
   const form: FormLike = props.form ?? props.initialForm ?? {};
 
@@ -346,6 +432,41 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
   const [contactSaveError, setContactSaveError] = React.useState<string | null>(null);
   const [contactSaveSuccess, setContactSaveSuccess] = React.useState(false);
 
+  // Theme / Branding (Teilprojekt 2.18)
+  const initialThemeDraft = React.useMemo<ThemeDraft>(() => {
+    const cfg = form?.config;
+    const rawTheme =
+      isPlainObject(cfg) && (cfg as any).theme ? (cfg as any).theme : undefined;
+
+    const n = normalizeTheme(rawTheme);
+
+    return {
+      background: n.background,
+      surface: n.surface,
+      primary: n.primary,
+      text: n.text,
+      muted: n.muted,
+      border: n.border,
+      fontFamily: n.fontFamily,
+      logoUrl: n.logoUrl ?? '',
+    };
+  }, [form?.id, form?.config]);
+
+  const [themeDraft, setThemeDraft] = React.useState<ThemeDraft>(initialThemeDraft);
+  const [themeBaseline, setThemeBaseline] = React.useState<ThemeDraft>(initialThemeDraft);
+
+  const [isThemeDirty, setIsThemeDirty] = React.useState(false);
+  const [isSavingTheme, setIsSavingTheme] = React.useState(false);
+  const [themeSaveError, setThemeSaveError] = React.useState<string | null>(null);
+  const [themeSaveSuccess, setThemeSaveSuccess] = React.useState(false);
+
+  const themeHasInvalidHex = React.useMemo(() => {
+    for (const f of THEME_COLOR_FIELDS) {
+      if (!isValidHexColor(themeDraft[f.key])) return true;
+    }
+    return false;
+  }, [themeDraft]);
+
   // Server-Felder synchronisieren
   React.useEffect(() => {
     setFieldsState(normalizeFields(props.fields ?? props.initialFields ?? []));
@@ -360,6 +481,15 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     setContactSaveError(null);
     setContactSaveSuccess(false);
   }, [initialContactSlots]);
+
+  // Theme synchronisieren, wenn Form wechselt / neu geladen wird
+  React.useEffect(() => {
+    setThemeDraft(initialThemeDraft);
+    setThemeBaseline(initialThemeDraft);
+    setIsThemeDirty(false);
+    setThemeSaveError(null);
+    setThemeSaveSuccess(false);
+  }, [initialThemeDraft]);
 
   const sortedFields = React.useMemo(() => sortFields(fieldsState), [fieldsState]);
 
@@ -618,6 +748,149 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     }
   }
 
+  function recomputeThemeDirty(nextDraft: ThemeDraft) {
+    const equal = shallowEqualThemeDraft(nextDraft, themeBaseline);
+    setIsThemeDirty(!equal);
+  }
+
+  React.useEffect(() => {
+    recomputeThemeDirty(themeDraft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeDraft]);
+
+  function setThemeValue<K extends keyof ThemeDraft>(key: K, value: ThemeDraft[K]) {
+    setThemeDraft((prev) => ({ ...prev, [key]: value }));
+    setThemeSaveError(null);
+    setThemeSaveSuccess(false);
+    setIsThemeDirty(true);
+  }
+
+  function resetThemeToDefault() {
+    setThemeDraft({
+      background: DEFAULT_FORM_THEME.background,
+      surface: DEFAULT_FORM_THEME.surface,
+      primary: DEFAULT_FORM_THEME.primary,
+      text: DEFAULT_FORM_THEME.text,
+      muted: DEFAULT_FORM_THEME.muted,
+      border: DEFAULT_FORM_THEME.border,
+      fontFamily: DEFAULT_FORM_THEME.fontFamily,
+      logoUrl: '',
+    });
+    setThemeSaveError(null);
+    setThemeSaveSuccess(false);
+    setIsThemeDirty(true);
+  }
+
+  function isThemeExactlyDefault(draft: ThemeDraft): boolean {
+    const d = {
+      background: isValidHexColor(draft.background) ? normalizeHex(draft.background) : draft.background,
+      surface: isValidHexColor(draft.surface) ? normalizeHex(draft.surface) : draft.surface,
+      primary: isValidHexColor(draft.primary) ? normalizeHex(draft.primary) : draft.primary,
+      text: isValidHexColor(draft.text) ? normalizeHex(draft.text) : draft.text,
+      muted: isValidHexColor(draft.muted) ? normalizeHex(draft.muted) : draft.muted,
+      border: isValidHexColor(draft.border) ? normalizeHex(draft.border) : draft.border,
+      fontFamily: (draft.fontFamily ?? '').trim(),
+      logoUrl: (draft.logoUrl ?? '').trim(),
+    };
+
+    return (
+      d.background === DEFAULT_FORM_THEME.background &&
+      d.surface === DEFAULT_FORM_THEME.surface &&
+      d.primary === DEFAULT_FORM_THEME.primary &&
+      d.text === DEFAULT_FORM_THEME.text &&
+      d.muted === DEFAULT_FORM_THEME.muted &&
+      d.border === DEFAULT_FORM_THEME.border &&
+      (d.fontFamily || 'System') === DEFAULT_FORM_THEME.fontFamily &&
+      d.logoUrl === ''
+    );
+  }
+
+  async function handleSaveTheme() {
+    if (!form?.id) return;
+
+    if (themeHasInvalidHex) {
+      setThemeSaveError('Bitte gültige Hex-Farben verwenden (#rgb, #rrggbb oder #rrggbbaa).');
+      return;
+    }
+
+    setIsSavingTheme(true);
+    setThemeSaveError(null);
+    setThemeSaveSuccess(false);
+
+    try {
+      const formId = encodeURIComponent(String(form.id));
+
+      // Normalisieren (lowercase + führendes #)
+      const normalized: ThemeDraft = {
+        background: normalizeHex(themeDraft.background),
+        surface: normalizeHex(themeDraft.surface),
+        primary: normalizeHex(themeDraft.primary),
+        text: normalizeHex(themeDraft.text),
+        muted: normalizeHex(themeDraft.muted),
+        border: normalizeHex(themeDraft.border),
+        fontFamily: (themeDraft.fontFamily ?? DEFAULT_FORM_THEME.fontFamily).trim() || DEFAULT_FORM_THEME.fontFamily,
+        logoUrl: (themeDraft.logoUrl ?? '').trim(), // "" erlaubt => Logo löschen
+      };
+
+      const themePayload = isThemeExactlyDefault(normalized)
+        ? null
+        : {
+            background: normalized.background,
+            surface: normalized.surface,
+            primary: normalized.primary,
+            text: normalized.text,
+            muted: normalized.muted,
+            border: normalized.border,
+            fontFamily: normalized.fontFamily,
+            logoUrl: normalized.logoUrl, // kann "" sein
+          };
+
+      const res = await fetch(`/api/admin/forms/${formId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1',
+        },
+        body: JSON.stringify({
+          config: {
+            theme: themePayload,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Fehler beim Speichern des Designs (Status ${res.status}) ${txt}`);
+      }
+
+      // Baseline aktualisieren
+      const newBaseline = themePayload === null
+        ? {
+            background: DEFAULT_FORM_THEME.background,
+            surface: DEFAULT_FORM_THEME.surface,
+            primary: DEFAULT_FORM_THEME.primary,
+            text: DEFAULT_FORM_THEME.text,
+            muted: DEFAULT_FORM_THEME.muted,
+            border: DEFAULT_FORM_THEME.border,
+            fontFamily: DEFAULT_FORM_THEME.fontFamily,
+            logoUrl: '',
+          }
+        : normalized;
+
+      setThemeDraft(newBaseline);
+      setThemeBaseline(newBaseline);
+      setIsThemeDirty(false);
+
+      setThemeSaveSuccess(true);
+      setTimeout(() => setThemeSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error(err);
+      setThemeSaveError((err as Error).message ?? 'Unbekannter Fehler beim Speichern des Designs.');
+    } finally {
+      setIsSavingTheme(false);
+    }
+  }
+
   const formName =
     form?.name ?? form?.title ?? (form?.id ? `Formular #${form.id}` : 'Form');
   const formDescription = form?.description ?? '';
@@ -748,7 +1021,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                 <h2 className="text-sm font-semibold text-slate-900">Tablet-Vorschau</h2>
                 <p className="text-xs text-slate-500">
                   Grobe Annäherung an das spätere Tablet-/App-Layout. Der Kontaktblock
-                  (rechts) ist über Slot-Mapping konfigurierbar.
+                  (rechts) ist über Slot-Mapping konfigurierbar. Design reagiert live.
                 </p>
               </div>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
@@ -764,6 +1037,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                 setInspectorTab('field');
               }}
               contactSlots={contactSlotsDraft as any}
+              theme={themeDraft as any}
             />
           </div>
 
@@ -792,6 +1066,17 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                 >
                   Kontaktblock
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInspectorTab('design')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                    inspectorTab === 'design'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Design
+                </button>
               </div>
 
               {inspectorTab === 'contact' && (
@@ -806,6 +1091,21 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                   }`}
                 >
                   {isSavingContact ? 'Speichern …' : 'Kontaktblock speichern'}
+                </button>
+              )}
+
+              {inspectorTab === 'design' && (
+                <button
+                  type="button"
+                  onClick={handleSaveTheme}
+                  disabled={isSavingTheme || !isThemeDirty || !form?.id || themeHasInvalidHex}
+                  className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium ${
+                    isSavingTheme || !isThemeDirty || !form?.id || themeHasInvalidHex
+                      ? 'cursor-not-allowed bg-slate-200 text-slate-500'
+                      : 'bg-sky-600 text-white hover:bg-sky-700'
+                  }`}
+                >
+                  {isSavingTheme ? 'Speichern …' : 'Design speichern'}
                 </button>
               )}
             </div>
@@ -1094,6 +1394,192 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Tab: Design */}
+            {inspectorTab === 'design' && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-slate-900">Design Kit</h2>
+
+                <p className="text-xs text-slate-500">
+                  Farben, Font und Logo sind pro Formular gespeichert. Änderungen wirken sofort in der Vorschau.
+                </p>
+
+                {themeSaveError && (
+                  <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {themeSaveError}
+                  </p>
+                )}
+                {themeSaveSuccess && (
+                  <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    Design gespeichert.
+                  </p>
+                )}
+                {!themeSaveError && !themeSaveSuccess && isThemeDirty && (
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Änderungen am Design noch nicht gespeichert.
+                  </p>
+                )}
+                {themeHasInvalidHex && (
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Mindestens eine Farbe ist ungültig. Bitte nutze Hex-Farben wie #0ea5e9.
+                  </p>
+                )}
+
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold text-slate-900">Farben</div>
+                      <div className="text-[11px] text-slate-500">
+                        Background / Surface / Primary / Text / Muted / Border
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetThemeToDefault}
+                      className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      Zurücksetzen
+                    </button>
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {THEME_COLOR_FIELDS.map((f) => {
+                      const pickerFallback = (DEFAULT_FORM_THEME as any)[f.key] as string;
+                      const pickerValue = toColorPickerValue(themeDraft[f.key], pickerFallback);
+
+                      return (
+                        <div key={f.key} className="grid grid-cols-[1fr_auto] gap-3">
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs font-medium text-slate-800">
+                                {f.label}
+                              </div>
+                              <div className="text-[11px] text-slate-400">{f.hint}</div>
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={pickerValue}
+                                onChange={(e) => setThemeValue(f.key, e.target.value as any)}
+                                className="h-8 w-12 cursor-pointer rounded border border-slate-200 bg-white p-0"
+                                aria-label={`${f.label} Farbe wählen`}
+                              />
+                              <input
+                                type="text"
+                                value={themeDraft[f.key]}
+                                onChange={(e) => setThemeValue(f.key, e.target.value as any)}
+                                className={`w-full rounded-md border px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 ${
+                                  isValidHexColor(themeDraft[f.key])
+                                    ? 'border-slate-300 focus:border-sky-500 focus:ring-sky-500'
+                                    : 'border-amber-300 focus:border-amber-500 focus:ring-amber-500'
+                                }`}
+                                placeholder="#0ea5e9"
+                              />
+                              <button
+                                type="button"
+                                className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-200"
+                                onClick={() => {
+                                  const def = (DEFAULT_FORM_THEME as any)[f.key] as string;
+                                  setThemeValue(f.key, def as any);
+                                }}
+                                title="Setzt diesen Wert auf Default"
+                              >
+                                Default
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-end">
+                            <div
+                              className="h-8 w-10 rounded-md border border-slate-200"
+                              style={{
+                                backgroundColor: isValidHexColor(themeDraft[f.key])
+                                  ? normalizeHex(themeDraft[f.key])
+                                  : pickerValue,
+                              }}
+                              title="Preview"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="text-xs font-semibold text-slate-900">Font</div>
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-slate-700">
+                      Font Family (Name)
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        value={themeDraft.fontFamily}
+                        onChange={(e) => setThemeValue('fontFamily', e.target.value)}
+                      >
+                        {FONT_FAMILY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Hinweis: echtes Font-Loading kommt später – aktuell speichern wir nur den Namen.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="text-xs font-semibold text-slate-900">Logo</div>
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-slate-700">
+                      Logo URL (optional)
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        value={themeDraft.logoUrl}
+                        onChange={(e) => setThemeValue('logoUrl', e.target.value)}
+                        placeholder="https://…/logo.png"
+                      />
+                    </label>
+
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                        Preview (nur Platzhalter)
+                      </div>
+                      <div className="h-10 w-28 overflow-hidden rounded-md border border-slate-200 bg-white">
+                        {themeDraft.logoUrl.trim().length > 0 ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={themeDraft.logoUrl.trim()}
+                            alt="Logo Preview"
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[11px] text-slate-400">
+                            —
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-200"
+                        onClick={() => setThemeValue('logoUrl', '')}
+                        title="Logo entfernen"
+                      >
+                        Entfernen
+                      </button>
+                    </div>
+
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Später: Upload &amp; Media-Library. Jetzt: URL.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
