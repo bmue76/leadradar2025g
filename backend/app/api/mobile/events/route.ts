@@ -1,84 +1,56 @@
-// backend/app/api/mobile/events/route.ts
-
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { toEventDTO } from '@/lib/types/events';
-import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
-
-// public/mobile – kein requireAuthContext
-const prismaAny = prisma as any;
+import { NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireApiKeyContext } from "@/lib/api-keys";
+import { checkDualRateLimit } from "@/lib/api-rate-limit";
+import { jsonError, jsonOk } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
-  // Rate Limiting: 120 Requests pro Minute pro Client (API-Key oder IP)
-  const clientId = req.headers.get('x-api-key') ?? getClientIp(req);
-
-  const rlResult = checkRateLimit({
-    key: `${clientId}:GET:/api/mobile/events`,
-    windowMs: 60_000, // 1 Minute
-    maxRequests: 120,
-  });
-
-  if (!rlResult.allowed) {
-    const retryAfterSeconds = Math.ceil((rlResult.retryAfterMs ?? 0) / 1000);
-
-    return NextResponse.json(
-      {
-        error: 'Too many requests',
-        code: 'RATE_LIMITED',
-        details: {
-          retryAfterMs: rlResult.retryAfterMs ?? 0,
-          retryAfterSeconds,
-        },
-      },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': retryAfterSeconds.toString(),
-        },
-      },
-    );
-  }
-
   try {
-    const url = new URL(req.url);
-    const tenantSlug = url.searchParams.get('tenantSlug');
+    const { tenantId, apiKeyId } = await requireApiKeyContext(req);
 
-    if (!tenantSlug) {
-      return NextResponse.json(
-        { error: 'tenantSlug query parameter is required.' },
-        { status: 400 },
+    const rl = checkDualRateLimit(req, {
+      routeKey: "GET:/api/mobile/events",
+      windowMs: 60_000,
+      tenantId,
+      apiKeyId,
+      maxRequestsPerApiKey: 120,
+      maxRequestsPerIp: 240,
+    });
+
+    if (!rl.allowed) {
+      return jsonError(
+        429,
+        "RATE_LIMITED",
+        "Too many requests",
+        {
+          limitedBy: rl.limitedBy,
+          retryAfterMs: rl.retryAfterMs,
+          retryAfterSeconds: rl.retryAfterSeconds,
+        },
+        { "Retry-After": rl.retryAfterSeconds.toString() }
       );
     }
 
-    const tenant = await prismaAny.tenant.findUnique({
-      where: { slug: tenantSlug },
+    const events = await prisma.event.findMany({
+      where: { tenantId },
+      orderBy: { startDate: "asc" },
+      select: {
+        id: true,
+        name: true,
+        location: true,
+        startDate: true,
+        endDate: true,
+      },
     });
 
-    if (!tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found.' },
-        { status: 404 },
-      );
+    return jsonOk({ events }, 200);
+  } catch (error: any) {
+    if (error?.status && error?.message) {
+      const code = (error.code as any) ?? "UNAUTHORIZED";
+      return jsonError(error.status, code, error.message);
     }
 
-    const events = await prismaAny.event.findMany({
-      where: {
-        tenantId: tenant.id,
-        status: 'ACTIVE', // nur aktive Events für Mobile
-      },
-      orderBy: {
-        startDate: 'asc',
-      },
-    });
-
-    return NextResponse.json({
-      events: events.map(toEventDTO),
-    });
-  } catch (error) {
-    console.error('[GET /api/mobile/events] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    console.error("[GET /api/mobile/events] Unexpected error", error);
+    return jsonError(500, "INTERNAL_ERROR", "Internal server error");
   }
 }

@@ -1,89 +1,96 @@
-// backend/app/api/mobile/events/[id]/forms/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireApiKeyContext } from "@/lib/api-keys";
+import { checkDualRateLimit } from "@/lib/api-rate-limit";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { toEventWithFormsDTO } from '@/lib/types/events';
-import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
-
-// public/mobile – kein requireAuthContext
-const prismaAny = prisma as any;
+function parseId(param: string | undefined): number | null {
+  if (!param) return null;
+  const n = Number(param);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export async function GET(
   req: NextRequest,
-  context: any,
+  context: { params: Promise<{ id: string }> }
 ) {
-  // Rate Limiting: 60 Requests pro Minute pro Client (API-Key oder IP)
-  const clientId = req.headers.get('x-api-key') ?? getClientIp(req);
-
-  const rlResult = checkRateLimit({
-    key: `${clientId}:GET:/api/mobile/events/[id]/forms`,
-    windowMs: 60_000, // 1 Minute
-    maxRequests: 60,
-  });
-
-  if (!rlResult.allowed) {
-    const retryAfterSeconds = Math.ceil((rlResult.retryAfterMs ?? 0) / 1000);
-
-    return NextResponse.json(
-      {
-        error: 'Too many requests',
-        code: 'RATE_LIMITED',
-        details: {
-          retryAfterMs: rlResult.retryAfterMs ?? 0,
-          retryAfterSeconds,
-        },
-      },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': retryAfterSeconds.toString(),
-        },
-      },
-    );
-  }
-
   try {
-    // In Next 15 ist context.params ein Promise -> wir müssen es awaiten
-    const { id: rawId } = await context.params;
-    const eventId = Number.parseInt(rawId, 10);
+    const { tenantId, apiKeyId } = await requireApiKeyContext(req);
 
-    if (!Number.isFinite(eventId) || eventId <= 0) {
+    const { id } = await context.params;
+    const eventId = parseId(id);
+
+    if (!eventId) {
+      return NextResponse.json({ error: "Invalid event id" }, { status: 400 });
+    }
+
+    // Rate Limit (API-Key + IP)
+    const rl = checkDualRateLimit(req, {
+      routeKey: "GET:/api/mobile/events/:id/forms",
+      windowMs: 60_000,
+      tenantId,
+      apiKeyId,
+      maxRequestsPerApiKey: 120,
+      maxRequestsPerIp: 240,
+    });
+
+    if (!rl.allowed) {
       return NextResponse.json(
-        { error: 'Invalid event id.' },
-        { status: 400 },
+        {
+          error: "Too many requests",
+          code: "RATE_LIMITED",
+          details: {
+            limitedBy: rl.limitedBy,
+            retryAfterMs: rl.retryAfterMs,
+            retryAfterSeconds: rl.retryAfterSeconds,
+          },
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": rl.retryAfterSeconds.toString() },
+        }
       );
     }
 
-    const event = await prismaAny.event.findFirst({
-      where: {
-        id: eventId,
-        // optional: nur aktive Events für Mobile
-        status: 'ACTIVE',
-      },
-      include: {
-        eventForms: {
-          include: {
-            form: true,
+    // Ownership: Event muss zum Tenant gehören
+    const event = await prisma.event.findFirst({
+      where: { id: eventId, tenantId },
+      select: { id: true },
+    });
+
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+
+    const eventForms = await prisma.eventForm.findMany({
+      where: { eventId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        createdAt: true,
+        form: {
+          select: {
+            id: true,
+            name: true,
+            updatedAt: true,
           },
         },
       },
     });
 
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found or not active.' },
-        { status: 404 },
-      );
+    const forms = eventForms.map((ef) => ({
+      eventFormId: ef.id,
+      formId: ef.form.id,
+      name: ef.form.name,
+      updatedAt: ef.form.updatedAt,
+    }));
+
+    return NextResponse.json({ forms }, { status: 200 });
+  } catch (error: any) {
+    if (error?.status && error?.message) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
-    return NextResponse.json({
-      event: toEventWithFormsDTO(event),
-    });
-  } catch (error) {
-    console.error('[GET /api/mobile/events/[id]/forms] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error.' },
-      { status: 500 },
-    );
+    console.error("[GET /api/mobile/events/[id]/forms] Unexpected error", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

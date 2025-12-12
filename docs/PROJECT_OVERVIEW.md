@@ -305,6 +305,31 @@ Details & API-Contracts siehe:
 
 ---
 
+### Teilprojekt 1.9 – Mobile-API: API-Key-Auth & Access Control ✅
+
+- Policy: Mobile-/Integrations-Endpunkte sind API-Key-pflichtig (Header `x-api-key`)
+- Tenant-Scope: Alle Mobile-Zugriffe strikt über `tenantId` aus ApiKeyContext
+- Endpoints abgesichert:
+  - GET `/api/mobile/events`
+  - GET `/api/mobile/events/:id/forms`
+  - GET `/api/forms/:id`
+  - POST `/api/leads`
+- Rate Limiting: pro API-Key (tenantId+apiKeyId) + zusätzlich IP (Dual-Rate-Limit)
+- Konsistente Fehlerresponses: `{ error, code, details? }` + `Retry-After` bei 429
+- Doku: `docs/teilprojekt-1.9-mobile-api-api-keys.md`
+
+**Geänderte/Neue Files (Auszug):**
+- `backend/lib/api-keys.ts`
+- `backend/lib/api-rate-limit.ts`
+- `backend/lib/api-response.ts`
+- `backend/app/api/mobile/events/route.ts`
+- `backend/app/api/mobile/events/[id]/forms/route.ts`
+- `backend/app/api/forms/[id]/route.ts`
+- `backend/app/api/leads/route.ts`
+- `backend/docs/teilprojekt-1.9-mobile-api-api-keys.md`
+
+---
+
 ### 2.1 – Admin-UI: Forms-CRUD (List & Detail)
 
 **Ziel:** Grundlegende Formular-Verwaltung im Admin-Bereich.
@@ -444,21 +469,6 @@ Details & API-Contracts siehe:
 
 ---
 
-## Schritt 2 – `PROJECT_OVERVIEW.md` um Stand nach 2.7 ergänzen
-
-**Tool:** VS Code  
-**Ziel:** Überblicks-Doku um den neuen Stand erweitern.
-
-**Aktion:**
-
-1. Öffne:
-
-`C:/dev/leadradar2025g/backend/docs/PROJECT_OVERVIEW.md`  
-*(oder wo deine Projektübersicht liegt – Pfad ggf. anpassen)*
-
-2. Füge am passenden Ort (z. B. unter „Teilprojekt 2.x – Admin-UI“) folgenden Abschnitt hinzu:
-
-```md
 ### Stand nach Teilprojekt 2.7 – Admin-Formbuilder: Properties-Panel & Feldbearbeitung
 
 - `/admin/forms/[id]` ist der zentrale Formbuilder-Workspace:
