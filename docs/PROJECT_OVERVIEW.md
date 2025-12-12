@@ -330,6 +330,23 @@ Details & API-Contracts siehe:
 
 ---
 
+
+---
+
+## Teilprojekt 1.10 – Mobile-API: Contracts & Versioning (v1) ✅
+- Mobile DTOs (lib/types/mobile.ts)
+- Prisma → DTO Mapper (lib/mobile-mappers.ts)
+- v1 Routes:
+  - GET /api/mobile/v1/events
+  - GET /api/mobile/v1/events/[id]/forms
+  - GET /api/mobile/v1/forms/[id]
+  - POST /api/mobile/v1/leads
+- Contract-Doku: docs/teilprojekt-1.10-mobile-api-contracts-v1.md
+- Hinweis: Next.js params sind Promise (Next 16)
+- Unversionierte Endpunkte bleiben bestehen, v1 ist bevorzugt
+
+---
+
 ### 2.1 – Admin-UI: Forms-CRUD (List & Detail)
 
 **Ziel:** Grundlegende Formular-Verwaltung im Admin-Bereich.
