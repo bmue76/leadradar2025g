@@ -91,6 +91,7 @@ export async function GET(req: NextRequest, context: any) {
         id: true,
         version: true,
         createdAt: true,
+        createdByUserId: true,
       },
     });
 
@@ -121,6 +122,7 @@ export async function GET(req: NextRequest, context: any) {
         id: r.id,
         version: r.version,
         createdAt: r.createdAt.toISOString(),
+        createdByUserId: r.createdByUserId ?? null,
       })),
     });
   } catch (error) {

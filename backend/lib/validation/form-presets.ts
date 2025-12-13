@@ -17,6 +17,12 @@ export const zUpdatePresetFromFormRequest = z.object({
   formId: z.number().int().positive(),
 });
 
+// 2.23A: Rollback Preset to a Revision
+export const zRollbackPresetRequest = z.object({
+  version: z.number().int().positive(),
+});
+
 export type CreatePresetRequestInput = z.infer<typeof zCreatePresetRequest>;
 export type CreateFormFromPresetRequestInput = z.infer<typeof zCreateFormFromPresetRequest>;
 export type UpdatePresetFromFormRequestInput = z.infer<typeof zUpdatePresetFromFormRequest>;
+export type RollbackPresetRequestInput = z.infer<typeof zRollbackPresetRequest>;

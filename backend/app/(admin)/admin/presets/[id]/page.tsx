@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import type { GetPresetResponse, FormPresetFieldSummary } from "@/lib/types/form-presets";
+import type {
+  GetPresetResponse,
+  FormPresetFieldSummary,
+  FormPresetRevisionListItemDTO,
+} from "@/lib/types/form-presets";
 import PresetDetailActions from "./PresetDetailActions";
 
 export const dynamic = "force-dynamic";
@@ -133,9 +137,7 @@ export default async function AdminPresetDetailPage({
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold">Vorlage</h1>
-        <p className="mt-2 text-sm text-red-600">
-          Fehler beim Laden der Vorlage ({res.status})
-        </p>
+        <p className="mt-2 text-sm text-red-600">Fehler beim Laden der Vorlage ({res.status})</p>
         <pre className="mt-3 whitespace-pre-wrap rounded border p-3 text-xs">{text}</pre>
         <div className="mt-4">
           <Link className="rounded border px-3 py-2 text-sm hover:bg-gray-50" href="/admin/presets">
@@ -209,6 +211,8 @@ export default async function AdminPresetDetailPage({
     }
   }
 
+  const revisions: FormPresetRevisionListItemDTO[] = Array.isArray(data.revisions) ? data.revisions : [];
+
   return (
     <div className="p-6">
       <div className="flex items-start justify-between gap-4">
@@ -224,7 +228,9 @@ export default async function AdminPresetDetailPage({
           <h1 className="mt-2 text-xl font-semibold">{preset.name}</h1>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-700">
-            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">Kategorie: {preset.category}</span>
+            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
+              Kategorie: {preset.category}
+            </span>
 
             {viewKind === "current" ? (
               <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">
@@ -248,6 +254,9 @@ export default async function AdminPresetDetailPage({
 
         <PresetDetailActions
           presetId={preset.id}
+          viewKind={viewKind}
+          viewVersion={viewVersion}
+          currentVersion={preset.snapshotVersion}
           auth={{
             userId,
             tenantId: tenantId ?? null,
@@ -291,8 +300,8 @@ export default async function AdminPresetDetailPage({
             Current v{preset.snapshotVersion}
           </Link>
 
-          {(data as any).revisions?.length ? (
-            (data as any).revisions.map((r: { id: number; version: number; createdAt: string }) => (
+          {revisions.length ? (
+            revisions.map((r) => (
               <Link
                 key={r.id}
                 href={`/admin/presets/${preset.id}?v=${r.version}`}
@@ -303,7 +312,13 @@ export default async function AdminPresetDetailPage({
                 }`}
                 title={`Revision v${r.version} anzeigen`}
               >
-                v{r.version} <span className="text-gray-500">· {formatDateTime(r.createdAt)}</span>
+                v{r.version}{" "}
+                <span className="text-gray-500">
+                  · {formatDateTime(r.createdAt)}
+                  {r.createdByUserId !== undefined && r.createdByUserId !== null
+                    ? ` · erstellt von ${r.createdByUserId}`
+                    : ""}
+                </span>
               </Link>
             ))
           ) : (
@@ -388,8 +403,7 @@ export default async function AdminPresetDetailPage({
       {/* Raw JSON */}
       <details className="mt-6 rounded border p-4">
         <summary className="cursor-pointer text-sm font-medium">
-          Snapshot (Raw JSON) anzeigen{" "}
-          {viewKind === "revision" ? `(Revision v${viewVersion})` : "(Current)"}
+          Snapshot (Raw JSON) anzeigen {viewKind === "revision" ? `(Revision v${viewVersion})` : "(Current)"}
         </summary>
         <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-3 text-xs">
           {JSON.stringify(viewSnapshot, null, 2)}

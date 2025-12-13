@@ -9,6 +9,8 @@ type FormOption = {
   name: string;
 };
 
+type Notice = { kind: "success" | "error"; message: string };
+
 function normalizeForms(data: any): FormOption[] {
   // akzeptiere: { forms: [...] } oder [...] oder { items: [...] }
   const arr =
@@ -46,9 +48,6 @@ async function fetchFormsWithFallback(
 
       const txt = await res.text().catch(() => "");
       lastError = `Formulare konnten nicht geladen werden (${res.status}) via ${url}. ${txt}`;
-
-      // wenn der Server 400 liefert, lohnt sich der Fallback sicher
-      // bei anderen Status (401/403/500) ebenfalls – aber wir versuchen sowieso der Reihe nach
     } catch (e: any) {
       lastError = e?.message ?? String(e);
     }
@@ -59,9 +58,15 @@ async function fetchFormsWithFallback(
 
 export default function PresetDetailActions({
   presetId,
+  viewKind,
+  viewVersion,
+  currentVersion,
   auth,
 }: {
   presetId: number;
+  viewKind: "current" | "revision";
+  viewVersion: number;
+  currentVersion: number;
   auth: { userId: string; tenantId: string | null };
 }) {
   const router = useRouter();
@@ -74,9 +79,13 @@ export default function PresetDetailActions({
   const [forms, setForms] = useState<FormOption[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<number | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
-  const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(
-    null,
-  );
+
+  // Rollback
+  const [rollbackBusy, setRollbackBusy] = useState(false);
+
+  // Notice (persisted across route refresh)
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeKey = useMemo(() => `presetNotice:${presetId}`, [presetId]);
 
   const headers = useMemo(() => {
     return {
@@ -84,6 +93,33 @@ export default function PresetDetailActions({
       ...(auth.tenantId ? { "x-tenant-id": auth.tenantId } : {}),
     } as Record<string, string>;
   }, [auth.userId, auth.tenantId]);
+
+  useEffect(() => {
+    // One-shot notice restore (after redirect without query params)
+    try {
+      const raw = sessionStorage.getItem(noticeKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as any;
+      if (
+        parsed &&
+        (parsed.kind === "success" || parsed.kind === "error") &&
+        typeof parsed.message === "string"
+      ) {
+        setNotice({ kind: parsed.kind, message: parsed.message });
+      }
+      sessionStorage.removeItem(noticeKey);
+    } catch {
+      // ignore
+    }
+  }, [noticeKey]);
+
+  function persistNotice(n: Notice) {
+    try {
+      sessionStorage.setItem(noticeKey, JSON.stringify(n));
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     if (!updateOpen) return;
@@ -167,13 +203,13 @@ export default function PresetDetailActions({
       const newVersion = data?.preset?.snapshotVersion;
 
       setUpdateOpen(false);
-      setNotice({
+
+      const n: Notice = {
         kind: "success",
         message:
-          typeof newVersion === "number"
-            ? `Version v${newVersion} erstellt.`
-            : "Preset aktualisiert.",
-      });
+          typeof newVersion === "number" ? `Version v${newVersion} erstellt.` : "Preset aktualisiert.",
+      };
+      persistNotice(n);
 
       // Wenn man gerade eine Revision ansieht (?v=...), zurück auf Current
       router.push(`/admin/presets/${presetId}`);
@@ -184,6 +220,58 @@ export default function PresetDetailActions({
       setUpdateBusy(false);
     }
   }
+
+  async function onRollback() {
+    if (viewKind !== "revision") return;
+
+    const ok = window.confirm(`Rollback wirklich ausführen?\n\nEs wird eine neue Current-Version erzeugt (snapshotVersion++).\nRollback auf: v${viewVersion}`);
+    if (!ok) return;
+
+    setRollbackBusy(true);
+    setNotice(null);
+
+    try {
+      const res = await fetch(`/api/admin/form-presets/${presetId}/rollback`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ version: viewVersion }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        setNotice({
+          kind: "error",
+          message: `Rollback fehlgeschlagen (${res.status}). ${txt}`,
+        });
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+      const newVersion = data?.preset?.snapshotVersion;
+
+      const n: Notice = {
+        kind: "success",
+        message:
+          typeof newVersion === "number"
+            ? `Rollback erstellt: v${newVersion}`
+            : "Rollback erstellt.",
+      };
+      persistNotice(n);
+
+      // Redirect auf Current View (ohne ?v=)
+      router.push(`/admin/presets/${presetId}`);
+      router.refresh();
+    } catch (e: any) {
+      setNotice({ kind: "error", message: e?.message ?? String(e) });
+    } finally {
+      setRollbackBusy(false);
+    }
+  }
+
+  const anyBusy = busy || updateBusy || rollbackBusy;
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -202,9 +290,21 @@ export default function PresetDetailActions({
         Neues Formular
       </Link>
 
+      {viewKind === "revision" ? (
+        <button
+          type="button"
+          disabled={anyBusy || viewVersion === currentVersion}
+          onClick={onRollback}
+          className="inline-flex items-center justify-center rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+          title="Setzt diese Revision als neue Current-Version (snapshotVersion++)"
+        >
+          {rollbackBusy ? "Rollback…" : `Rollback auf v${viewVersion}`}
+        </button>
+      ) : null}
+
       <button
         type="button"
-        disabled={updateBusy}
+        disabled={anyBusy}
         onClick={() => {
           setNotice(null);
           setUpdateOpen(true);
@@ -217,7 +317,7 @@ export default function PresetDetailActions({
 
       <button
         type="button"
-        disabled={busy}
+        disabled={anyBusy}
         onClick={onDelete}
         className="inline-flex items-center justify-center rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
       >
@@ -226,7 +326,7 @@ export default function PresetDetailActions({
 
       {notice ? (
         <div
-          className={`mt-1 max-w-[240px] rounded border px-2 py-1 text-xs ${
+          className={`mt-1 max-w-[280px] rounded border px-2 py-1 text-xs ${
             notice.kind === "success"
               ? "border-green-200 bg-green-50 text-green-700"
               : "border-red-200 bg-red-50 text-red-700"
@@ -252,7 +352,7 @@ export default function PresetDetailActions({
                 type="button"
                 className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
                 onClick={() => setUpdateOpen(false)}
-                disabled={updateBusy}
+                disabled={updateBusy || rollbackBusy}
                 aria-label="Schliessen"
               >
                 ✕
@@ -273,7 +373,7 @@ export default function PresetDetailActions({
                   className="mt-2 w-full rounded border px-3 py-2 text-sm"
                   value={selectedFormId ?? ""}
                   onChange={(e) => setSelectedFormId(Number(e.target.value) || null)}
-                  disabled={updateBusy}
+                  disabled={updateBusy || rollbackBusy}
                 >
                   {forms.length === 0 ? <option value="">Keine Formulare gefunden</option> : null}
                   {forms.map((f) => (
@@ -290,7 +390,7 @@ export default function PresetDetailActions({
                 type="button"
                 className="rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
                 onClick={() => setUpdateOpen(false)}
-                disabled={updateBusy}
+                disabled={updateBusy || rollbackBusy}
               >
                 Abbrechen
               </button>
@@ -299,7 +399,7 @@ export default function PresetDetailActions({
                 type="button"
                 className="rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
                 onClick={onUpdatePreset}
-                disabled={updateBusy || formsLoading || !!formsError || !selectedFormId}
+                disabled={updateBusy || rollbackBusy || formsLoading || !!formsError || !selectedFormId}
               >
                 {updateBusy ? "Aktualisiere…" : "Aktualisieren"}
               </button>

@@ -68,7 +68,7 @@ export type FormPresetRevisionListItemDTO = {
   id: number;
   version: number;
   createdAt: string; // ISO
-  // optional für später:
+  // 2.23A Audit (optional, kann bei alten Revisionen null/undefined sein)
   createdByUserId?: number | null;
 };
 
@@ -141,6 +141,29 @@ export type UpdatePresetFromFormRequest = {
 };
 
 export type UpdatePresetFromFormResponse = {
+  preset: {
+    id: number;
+    name: string;
+    category: string;
+    description: string | null;
+    snapshotVersion: number;
+    createdAt: string;
+    updatedAt: string;
+    fieldCount: number;
+    snapshot: unknown;
+  };
+  revisions: FormPresetRevisionListItemDTO[];
+};
+
+/**
+ * 2.23A Rollback Preset to a Revision
+ * POST /api/admin/form-presets/[id]/rollback
+ */
+export type RollbackPresetRequest = {
+  version: number;
+};
+
+export type RollbackPresetResponse = {
   preset: {
     id: number;
     name: string;

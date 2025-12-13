@@ -282,13 +282,37 @@ Doku: `docs/teilprojekt-2.22-preset-versioning-update.md`
 
 ---
 
-## Stand nach Teilprojekt 2.22
+### Teilprojekt 2.23A – Admin – Preset Rollback & Audit (createdByUserId) ✅
+**Ziel:** Revisionen auf einen früheren Stand zurücksetzen (Rollback) und dabei die Historie inkl. Audit sauber fortschreiben.  
+**Ergebnis (Auszug):**
+- **Audit:**
+  - `FormPresetRevision.createdByUserId` (nullable) eingeführt
+  - Update/Rollback schreiben `createdByUserId` beim Erzeugen neuer Revisionen
+  - `GET /api/admin/form-presets/[id]` liefert `createdByUserId` in der Versionsliste
+- **Rollback API:**
+  - `POST /api/admin/form-presets/[id]/rollback`:
+    - setzt Revision `vX` als neuen Current-Snapshot
+    - bumped `snapshotVersion++`
+    - speichert vorherigen Current als Revision (History bleibt vollständig)
+    - Konfliktfall: `409` mit `REVISION_CONFLICT`
+- **Admin UI:**
+  - Revision-View (`?v=X`) zeigt Button „Rollback auf vX“ (Confirm Dialog)
+  - Nach Erfolg: Notice „Rollback erstellt: vY“ + Redirect auf Current View (ohne Query)
+  - Versionsliste zeigt optional „erstellt von <id>“
 
-- Presets sind end-to-end nutzbar (inkl. Versionierung):
+Doku: `docs/teilprojekt-2.23A-preset-rollback-audit.md`
+
+---
+
+## Stand nach Teilprojekt 2.23A
+
+- Presets sind end-to-end nutzbar (inkl. Versionierung + Rollback):
   - Preset erstellen (aus Formular speichern)
   - Preset Library: Liste, Filter, Preview, Delete (`/admin/presets`)
   - Formular aus Preset erstellen (`/admin/forms/new`)
   - Preset aktualisieren (neue Current-Version) + History bleibt abrufbar
+  - Rollback von Revisionen erzeugt neue Current-Version und schreibt Historie korrekt fort
   - Versions-Preview via `?v=` inkl. Raw JSON und Feldliste
+  - Audit-Info (`createdByUserId`) ist in der Versionsliste sichtbar, wenn vorhanden
 - API ist tenant-sicher und liefert konsistente Fehler.
 - Next.js 16 / Turbopack Besonderheit berücksichtigt: `headers()`, `params`, `searchParams` können Promise sein.

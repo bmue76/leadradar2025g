@@ -1,10 +1,10 @@
-// backend/app/api/admin/form-presets/[id]/update/route.ts
+// backend/app/api/admin/form-presets/[id]/rollback/route.ts
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthContext } from "@/lib/auth-context";
 import { jsonError, jsonOk } from "@/lib/api-response";
-import { zUpdatePresetFromFormRequest } from "@/lib/validation/form-presets";
+import { zRollbackPresetRequest } from "@/lib/validation/form-presets";
 import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -21,15 +21,18 @@ function isUniqueConstraintError(err: unknown) {
 }
 
 /**
- * POST /api/admin/form-presets/[id]/update
- * Body: { formId }
+ * POST /api/admin/form-presets/[id]/rollback
+ * Body: { version }
  *
  * Transaction:
- * 1) Preset laden (tenant-scoped)
- * 2) Current Snapshot als Revision speichern (version = snapshotVersion)
- * 3) Snapshot aus Form + Fields erzeugen
- * 4) Preset updaten: snapshot = newSnapshot, snapshotVersion++
- * 5) Return: preset + revisions
+ * 1) Preset laden (tenant-scope strikt)
+ * 2) Revision (presetId+version) laden (tenant)
+ * 3) Current als neue Revision speichern (version = preset.snapshotVersion)
+ *    - createdByUserId = auth.user.id (wenn vorhanden)
+ * 4) Preset update:
+ *    - snapshot = revision.snapshot
+ *    - snapshotVersion = preset.snapshotVersion + 1
+ * 5) Return: preset + revisions (desc)
  */
 export async function POST(req: NextRequest, context: any) {
   try {
@@ -47,52 +50,46 @@ export async function POST(req: NextRequest, context: any) {
       return jsonError(400, "INVALID_JSON", "Invalid JSON");
     }
 
-    const parsed = zUpdatePresetFromFormRequest.safeParse(body);
+    const parsed = zRollbackPresetRequest.safeParse(body);
     if (!parsed.success) {
       return jsonError(400, "VALIDATION_ERROR", "Invalid payload", parsed.error.flatten());
     }
 
-    const { formId } = parsed.data;
+    const { version } = parsed.data;
 
     const result = await prisma
       .$transaction(async (tx) => {
-        const preset = await tx.formPreset.findFirst({
-          where: { id: presetId, tenantId: tenant.id },
+        // 1) Preset laden (tenant-scope strikt, inkl. explizitem TENANT_MISMATCH)
+        const preset = await tx.formPreset.findUnique({
+          where: { id: presetId },
         });
 
         if (!preset) {
           return { kind: "PRESET_NOT_FOUND" as const };
         }
-
-        // Form: sauber unterscheiden zwischen "nicht vorhanden" und "tenant mismatch"
-        const formHead = await tx.form.findUnique({
-          where: { id: formId },
-          select: { id: true, tenantId: true },
-        });
-
-        if (!formHead) {
-          return { kind: "FORM_NOT_FOUND" as const };
-        }
-        if (formHead.tenantId !== tenant.id) {
+        if (preset.tenantId !== tenant.id) {
           return { kind: "TENANT_MISMATCH" as const };
         }
 
-        const form = await tx.form.findFirst({
-          where: { id: formId, tenantId: tenant.id },
-          include: {
-            fields: {
-              orderBy: [{ order: "asc" }, { id: "asc" }],
-            },
+        // Version darf nicht "current" sein (Revision existiert typischerweise nur für ältere Stände)
+        if (version === preset.snapshotVersion) {
+          return { kind: "INVALID_VERSION" as const, currentVersion: preset.snapshotVersion };
+        }
+
+        // 2) Revision laden
+        const revision = await tx.formPresetRevision.findFirst({
+          where: {
+            tenantId: tenant.id,
+            presetId: preset.id,
+            version,
           },
         });
 
-        if (!form) {
-          // defensiv
-          return { kind: "FORM_NOT_FOUND" as const };
+        if (!revision) {
+          return { kind: "REVISION_NOT_FOUND" as const };
         }
 
-        // 2) Current Snapshot -> Revision (version = current snapshotVersion)
-        // Unique constraint: @@unique([presetId, version])
+        // 3) Current Snapshot -> neue Revision
         await tx.formPresetRevision.create({
           data: {
             tenantId: tenant.id,
@@ -103,36 +100,14 @@ export async function POST(req: NextRequest, context: any) {
           },
         });
 
-        // 3) New Snapshot aus Form + Fields (wie beim Preset-Create)
-        const newSnapshot = {
-          form: {
-            name: form.name ?? null,
-            title: (form as any).title ?? null,
-            description: form.description ?? null,
-            status: (form as any).status ?? (form as any).state ?? null,
-            config: (form as any).config ?? null,
-          },
-          fields: form.fields.map((f) => ({
-            key: f.key,
-            label: f.label,
-            type: f.type,
-            placeholder: f.placeholder,
-            helpText: f.helpText,
-            required: f.required,
-            order: f.order,
-            isActive: f.isActive,
-            config: (f as any).config ?? undefined,
-          })),
-        };
-
         const nextVersion = preset.snapshotVersion + 1;
 
-        // 4) Preset updaten
+        // 4) Preset update auf Revision.snapshot
         const updatedPreset = await tx.formPreset.update({
           where: { id: preset.id },
           data: {
             snapshotVersion: nextVersion,
-            snapshot: newSnapshot as any,
+            snapshot: revision.snapshot as any,
           },
         });
 
@@ -160,14 +135,22 @@ export async function POST(req: NextRequest, context: any) {
     if (result.kind === "PRESET_NOT_FOUND") {
       return jsonError(404, "PRESET_NOT_FOUND", "Preset not found");
     }
-    if (result.kind === "FORM_NOT_FOUND") {
-      return jsonError(404, "FORM_NOT_FOUND", "Form not found");
-    }
     if (result.kind === "TENANT_MISMATCH") {
-      return jsonError(403, "TENANT_MISMATCH", "Form does not belong to this tenant");
+      return jsonError(403, "TENANT_MISMATCH", "Preset does not belong to this tenant");
+    }
+    if (result.kind === "INVALID_VERSION") {
+      return jsonError(
+        400,
+        "INVALID_VERSION",
+        "Invalid version (cannot rollback to current or non-existing version)",
+        { currentVersion: (result as any).currentVersion ?? null },
+      );
+    }
+    if (result.kind === "REVISION_NOT_FOUND") {
+      return jsonError(404, "REVISION_NOT_FOUND", "Revision not found");
     }
     if (result.kind === "CONFLICT") {
-      return jsonError(409, "REVISION_CONFLICT", "Preset update conflict (revision already exists)");
+      return jsonError(409, "REVISION_CONFLICT", "Rollback conflict (revision already exists)");
     }
 
     const preset = result.preset;
@@ -199,7 +182,7 @@ export async function POST(req: NextRequest, context: any) {
       return jsonError(401, "UNAUTHORIZED", "Authentication required");
     }
 
-    console.error("Error in POST /api/admin/form-presets/[id]/update", error);
+    console.error("Error in POST /api/admin/form-presets/[id]/rollback", error);
     return jsonError(500, "UNEXPECTED_ERROR", "Internal server error");
   }
 }
