@@ -94,7 +94,7 @@ export async function GET(req: NextRequest, context: any) {
       return jsonError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    // eslint-disable-next-line no-console
+     
     console.error('Error in GET /api/admin/forms/[id]', error);
     return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
   }
@@ -346,7 +346,7 @@ export async function PATCH(req: NextRequest, context: any) {
       return jsonError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    // eslint-disable-next-line no-console
+     
     console.error('Error in PATCH /api/admin/forms/[id]', error);
     return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
   }

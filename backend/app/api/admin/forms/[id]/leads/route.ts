@@ -129,7 +129,7 @@ export async function GET(req: NextRequest, context: any) {
       return jsonError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    // eslint-disable-next-line no-console
+     
     console.error('Error in GET /api/admin/forms/[id]/leads', error);
     return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
   }

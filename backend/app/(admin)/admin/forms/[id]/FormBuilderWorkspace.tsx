@@ -102,6 +102,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function getStringProp(obj: Record<string, unknown>, key: string): string | null {
+  const v = obj[key];
+  return typeof v === 'string' ? v : null;
+}
+
+function extractPresetId(data: unknown): number | null {
+  if (!isPlainObject(data)) return null;
+
+  const direct = data.id;
+  if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+
+  const preset = data.preset;
+  if (isPlainObject(preset)) {
+    const pid = preset.id;
+    if (typeof pid === 'number' && Number.isFinite(pid)) return pid;
+  }
+
+  return null;
+}
+
 function normalizeContactSlots(raw: unknown): ContactSlotsConfig {
   if (!isPlainObject(raw)) return {};
   const out: ContactSlotsConfig = {};
@@ -351,8 +371,7 @@ function toColorPickerValue(value: string, fallback: string): string {
     const n = normalizeHex(input);
     // Color input kann kein Alpha: #rrggbbaa -> #rrggbb
     if (n.length === 9) return n.slice(0, 7);
-    // #rgb -> ok (Browser akzeptiert meist nur #rrggbb, aber viele konvertieren intern)
-    // wir konvertieren #rgb -> #rrggbb für Stabilität:
+    // #rgb -> #rrggbb
     if (n.length === 4) {
       const r = n[1];
       const g = n[2];
@@ -420,7 +439,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     if (!isPlainObject(cfg)) return {} as ContactSlotsConfig;
     const slots = (cfg as any).contactSlots;
     return normalizeContactSlots(slots);
-  }, [form?.id, form?.config]);
+  }, [form?.config]);
 
   const [contactSlotsDraft, setContactSlotsDraft] =
     React.useState<ContactSlotsConfig>(initialContactSlots);
@@ -450,7 +469,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
       fontFamily: n.fontFamily,
       logoUrl: n.logoUrl ?? '',
     };
-  }, [form?.id, form?.config]);
+  }, [form?.config]);
 
   const [themeDraft, setThemeDraft] = React.useState<ThemeDraft>(initialThemeDraft);
   const [themeBaseline, setThemeBaseline] = React.useState<ThemeDraft>(initialThemeDraft);
@@ -466,6 +485,110 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     }
     return false;
   }, [themeDraft]);
+
+  // ---------------------------------------------------------------------------
+  // Preset Dialog (Teilprojekt 2.19)
+  // ---------------------------------------------------------------------------
+  const [isPresetDialogOpen, setIsPresetDialogOpen] = React.useState(false);
+  const [presetName, setPresetName] = React.useState('');
+  const [presetCategory, setPresetCategory] = React.useState('');
+  const [presetDescription, setPresetDescription] = React.useState('');
+  const [isSavingPreset, setIsSavingPreset] = React.useState(false);
+  const [presetSaveError, setPresetSaveError] = React.useState<string | null>(null);
+  const [presetToast, setPresetToast] = React.useState<string | null>(null);
+
+  function getCurrentFormName(): string {
+    return (
+      form?.name ??
+      form?.title ??
+      (form?.id ? `Formular #${form.id}` : 'Form')
+    );
+  }
+
+  function openPresetDialog() {
+    setPresetName(getCurrentFormName());
+    setPresetCategory('');
+    setPresetDescription('');
+    setPresetSaveError(null);
+    setIsPresetDialogOpen(true);
+  }
+
+  function closePresetDialog() {
+    setIsPresetDialogOpen(false);
+    setPresetSaveError(null);
+  }
+
+  async function handleSaveAsPreset() {
+    const name = (presetName ?? '').trim();
+    const category = (presetCategory ?? '').trim();
+    const description = (presetDescription ?? '').trim();
+
+    const rawFormId = form?.id;
+    const formIdNum = Number.parseInt(String(rawFormId ?? ''), 10);
+
+    if (!Number.isFinite(formIdNum) || formIdNum <= 0) {
+      setPresetSaveError('Ungültige Form-ID – bitte Seite neu laden.');
+      return;
+    }
+
+    if (name.length === 0) {
+      setPresetSaveError('Name ist Pflicht.');
+      return;
+    }
+
+    if (category.length === 0) {
+      setPresetSaveError('Kategorie ist Pflicht.');
+      return;
+    }
+
+    setIsSavingPreset(true);
+    setPresetSaveError(null);
+
+    try {
+      const res = await fetch('/api/admin/form-presets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1',
+        },
+        body: JSON.stringify({
+          formId: formIdNum,
+          name,
+          category,
+          ...(description.length > 0 ? { description } : {}),
+        }),
+      });
+
+      const data: unknown = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        let msg = `Fehler beim Speichern der Vorlage (Status ${res.status}).`;
+        if (isPlainObject(data)) {
+          msg = getStringProp(data, 'error') ?? msg;
+        }
+        setPresetSaveError(msg);
+        setIsSavingPreset(false);
+        return;
+      }
+
+      const newPresetId = extractPresetId(data);
+
+      setIsSavingPreset(false);
+      closePresetDialog();
+
+      const toast = newPresetId
+        ? `Vorlage gespeichert (ID ${newPresetId}).`
+        : 'Vorlage gespeichert.';
+      setPresetToast(toast);
+      window.setTimeout(() => setPresetToast(null), 2500);
+    } catch (err) {
+      console.error(err);
+      setPresetSaveError(
+        (err as Error).message ?? 'Unbekannter Fehler beim Speichern der Vorlage.',
+      );
+      setIsSavingPreset(false);
+    }
+  }
 
   // Server-Felder synchronisieren
   React.useEffect(() => {
@@ -898,6 +1021,103 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
 
   return (
     <div className="space-y-6">
+      {/* Preset Dialog */}
+      {isPresetDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 z-0 bg-black/30"
+            onClick={closePresetDialog}
+            role="button"
+            tabIndex={-1}
+            aria-label="Dialog schliessen"
+          />
+          <div
+            className="relative z-10 w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+              <div>
+                <div className="text-lg font-semibold">Als Vorlage speichern</div>
+                <div className="mt-1 text-sm text-slate-600">
+                  Es wird ein Snapshot des aktuellen Formulars (inkl. Fields, Config, Theme) gespeichert.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closePresetDialog}
+                className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              {presetSaveError && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  {presetSaveError}
+                </div>
+              )}
+
+              <label className="block text-sm font-medium text-slate-800">
+                Name <span className="text-rose-600">*</span>
+                <input
+                  type="text"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-300"
+                  placeholder="z.B. Messe Leads Standard"
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-800">
+                Kategorie <span className="text-rose-600">*</span>
+                <input
+                  type="text"
+                  value={presetCategory}
+                  onChange={(e) => setPresetCategory(e.target.value)}
+                  className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-300"
+                  placeholder="z.B. Standard / Event / Produkte"
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-800">
+                Beschreibung (optional)
+                <textarea
+                  rows={3}
+                  value={presetDescription}
+                  onChange={(e) => setPresetDescription(e.target.value)}
+                  className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-300"
+                  placeholder="Kurzbeschreibung der Vorlage…"
+                />
+              </label>
+
+              <div className="text-xs text-slate-500">
+                Tenant-scope: Vorlage ist nur in deinem Tenant sichtbar.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+              <button
+                type="button"
+                onClick={closePresetDialog}
+                disabled={isSavingPreset}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveAsPreset()}
+                disabled={isSavingPreset}
+                className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isSavingPreset ? 'Speichere…' : 'Vorlage speichern'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="border-b border-slate-200 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -906,12 +1126,30 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
               <p className="mt-1 max-w-2xl text-sm text-slate-600">{formDescription}</p>
             )}
           </div>
-          {formStatus && (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700">
-              {formStatus}
-            </span>
-          )}
+
+          <div className="flex items-center gap-2">
+            {formStatus && (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-700">
+                {formStatus}
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={openPresetDialog}
+              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
+              title="Speichert das Formular als Vorlage (Snapshot)"
+            >
+              Als Vorlage speichern
+            </button>
+          </div>
         </div>
+
+        {presetToast && (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {presetToast}
+          </div>
+        )}
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">

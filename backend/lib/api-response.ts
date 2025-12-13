@@ -10,6 +10,7 @@ export type ApiErrorCode =
   | "INVALID_JSON"
   | "NOT_FOUND"
   | "BAD_REQUEST"
+  | "CONFLICT"
   | "INTERNAL_ERROR";
 
 export function jsonError(
@@ -17,7 +18,7 @@ export function jsonError(
   code: ApiErrorCode,
   message: string,
   details?: unknown,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
 ) {
   return NextResponse.json(
     {
@@ -25,7 +26,7 @@ export function jsonError(
       code,
       ...(details ? { details } : {}),
     },
-    { status, headers }
+    { status, headers },
   );
 }
 

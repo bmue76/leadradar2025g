@@ -86,7 +86,7 @@ export async function GET(
     const auth = await requireAuthContext(req);
 
     // 🔐 Tenant sauber aus dem AuthContext holen – robust gegen unterschiedliche Shapes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const anyAuth = auth as any;
     const rawTenantId = anyAuth.tenantId ?? anyAuth.tenant?.id;
 
@@ -192,7 +192,7 @@ export async function GET(
         formName: lead.form ? lead.form.name : null,
         // falls du im Prisma-Schema ein Feld "source" hast, wird es hier mitgenommen,
         // sonst bleibt es einfach null.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         source: (lead as any).source ?? null,
         name,
         company,

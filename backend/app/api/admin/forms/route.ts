@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       return jsonError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    // eslint-disable-next-line no-console
+     
     console.error('Error in GET /api/admin/forms', error);
     return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
   }
@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
 
       // Einfache Schleife, um einen freien Slug zu finden.
       // Begrenzung auf 50 Versuche, um Endlosschleifen zu vermeiden.
-      // eslint-disable-next-line no-constant-condition
+       
       while (true) {
         const existing = await prisma.form.findFirst({
           where: {
@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
       return jsonError('Authentication required', 401, 'UNAUTHORIZED');
     }
 
-    // eslint-disable-next-line no-console
+     
     console.error('Error in POST /api/admin/forms', error);
     return jsonError('Internal server error', 500, 'INTERNAL_ERROR');
   }
