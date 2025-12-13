@@ -60,7 +60,7 @@ function snapshotHasKey(snapshot: unknown, key: string): boolean {
 
 /**
  * GET /api/admin/form-presets/[id]
- * Liefert Preset inkl. snapshot + snapshotSummary
+ * Liefert Preset inkl. snapshot + snapshotSummary + revisions (History)
  */
 export async function GET(req: NextRequest, context: any) {
   try {
@@ -80,6 +80,19 @@ export async function GET(req: NextRequest, context: any) {
     if (!preset) {
       return jsonError(404, "NOT_FOUND", "Preset not found");
     }
+
+    const revisions = await prisma.formPresetRevision.findMany({
+      where: {
+        tenantId: tenant.id,
+        presetId: preset.id,
+      },
+      orderBy: [{ version: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        version: true,
+        createdAt: true,
+      },
+    });
 
     const fieldCount = snapshotFieldCount(preset.snapshot);
     const hasTheme = snapshotHasKey(preset.snapshot, "theme");
@@ -104,6 +117,11 @@ export async function GET(req: NextRequest, context: any) {
           fields: snapshotFieldsSummary(preset.snapshot),
         },
       },
+      revisions: revisions.map((r) => ({
+        id: r.id,
+        version: r.version,
+        createdAt: r.createdAt.toISOString(),
+      })),
     });
   } catch (error) {
     if (isAuthError(error)) {

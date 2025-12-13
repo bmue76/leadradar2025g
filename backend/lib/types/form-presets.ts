@@ -64,6 +64,14 @@ export type FormPresetFieldSummary = {
   active: boolean;
 };
 
+export type FormPresetRevisionListItemDTO = {
+  id: number;
+  version: number;
+  createdAt: string; // ISO
+  // optional für später:
+  createdByUserId?: number | null;
+};
+
 export type GetPresetResponse = {
   preset: {
     id: number;
@@ -83,6 +91,8 @@ export type GetPresetResponse = {
       fields: FormPresetFieldSummary[];
     };
   };
+  // 2.22: History (desc nach version)
+  revisions?: FormPresetRevisionListItemDTO[];
 };
 
 /**
@@ -121,4 +131,26 @@ export type FormPresetDTO = {
   snapshot: unknown;
   createdAt: string; // ISO
   updatedAt: string; // ISO
+};
+
+/**
+ * 2.22 Update Preset from Form
+ */
+export type UpdatePresetFromFormRequest = {
+  formId: number;
+};
+
+export type UpdatePresetFromFormResponse = {
+  preset: {
+    id: number;
+    name: string;
+    category: string;
+    description: string | null;
+    snapshotVersion: number;
+    createdAt: string;
+    updatedAt: string;
+    fieldCount: number;
+    snapshot: unknown;
+  };
+  revisions: FormPresetRevisionListItemDTO[];
 };

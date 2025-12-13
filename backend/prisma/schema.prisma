@@ -6,9 +6,9 @@ datasource db {
   provider = "postgresql"
 }
 
-/*
-  Enums
-*/
+/**
+ * Enums
+ */
 
 enum FormStatus {
   DRAFT
@@ -49,14 +49,14 @@ enum SubscriptionStatus {
   unpaid
 }
 
-/*
-  Core Multi-Tenant Models
-*/
+/**
+ * Core Multi-Tenant Models
+ */
 
 model Tenant {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String   @unique
+  id   Int    @id @default(autoincrement())
+  name String
+  slug String @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -70,6 +70,9 @@ model Tenant {
   // Form-Presets/Vorlagen (Snapshots), tenant-scoped
   formPresets FormPreset[]
 
+  // Preset-Revisions / Historie (defensiv tenant-scoped)
+  formPresetRevisions FormPresetRevision[]
+
   // Stripe-Subscriptions für diesen Tenant
   subscriptions Subscription[]
 
@@ -78,12 +81,12 @@ model Tenant {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String?
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
 
-  tenantId  Int
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -93,14 +96,14 @@ model User {
   leadsCreated Lead[] @relation("LeadsCreated")
 }
 
-/*
-  Forms & Leads Core
-*/
+/**
+ * Forms & Leads Core
+ */
 
 model Form {
-  id        Int        @id @default(autoincrement())
-  tenantId  Int
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       Int    @id @default(autoincrement())
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name        String
   description String?
@@ -109,13 +112,13 @@ model Form {
   version     Int        @default(1)
 
   // JSON-Konfiguration für Form-spezifische Einstellungen (z. B. Kontaktblock-Slot-Mapping)
-  config      Json?
+  config Json?
 
   createdByUserId Int?
-  createdByUser   User?   @relation("FormsCreated", fields: [createdByUserId], references: [id])
+  createdByUser   User? @relation("FormsCreated", fields: [createdByUserId], references: [id])
 
   updatedByUserId Int?
-  updatedByUser   User?   @relation("FormsUpdated", fields: [updatedByUserId], references: [id])
+  updatedByUser   User? @relation("FormsUpdated", fields: [updatedByUserId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -124,8 +127,8 @@ model Form {
   leads      Lead[]
   eventForms EventForm[]
 
-  @@index([tenantId])
   @@unique([tenantId, slug])
+  @@index([tenantId])
 }
 
 model FormField {
@@ -141,45 +144,73 @@ model FormField {
   type        FormFieldType
   placeholder String?
   helpText    String?
-  required    Boolean @default(false)
-  order       Int     @default(0)
+  required    Boolean       @default(false)
+  order       Int           @default(0)
 
   // JSON-Konfiguration für Feld-spezifische Einstellungen
   // z. B. options (für SELECT / MULTISELECT / RADIO), Min-/Max-Länge, etc.
-  config   Json?
+  config Json?
 
-  isActive Boolean  @default(true)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([formId, key])
   @@index([tenantId])
   @@index([formId])
-  @@unique([formId, key])
 }
 
-/*
-  Form Presets / Vorlagen (Snapshots)
-*/
+/**
+ * Form Presets / Vorlagen (Snapshots)
+ */
 
 model FormPreset {
-  id        Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  tenantId  Int
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name        String
   category    String
   description String?
 
-  snapshotVersion Int @default(1)
+  snapshotVersion Int  @default(1)
   snapshot        Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // History / Revisionen
+  revisions FormPresetRevision[]
+
   @@index([tenantId])
   @@index([tenantId, category])
+}
+
+model FormPresetRevision {
+  id Int @id @default(autoincrement())
+
+  // defensiv tenant-scoped (zusätzlich zu preset.tenantId)
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  presetId Int
+  preset   FormPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  // entspricht "vorheriger" snapshotVersion des Presets
+  version  Int
+  snapshot Json
+
+  createdAt DateTime @default(now())
+
+  // optional (wenn einfach verfügbar über x-user-id)
+  createdByUserId Int?
+
+  @@unique([presetId, version])
+  @@index([tenantId])
+  @@index([presetId])
+  @@index([presetId, createdAt])
 }
 
 model Lead {
@@ -211,9 +242,9 @@ model Lead {
   @@index([createdAt])
 }
 
-/*
-  Events & Event-Form-Zuordnung
-*/
+/**
+ * Events & Event-Form-Zuordnung
+ */
 
 model Event {
   id       Int    @id @default(autoincrement())
@@ -234,8 +265,8 @@ model Event {
   eventForms EventForm[]
   leads      Lead[]
 
-  @@index([tenantId])
   @@unique([tenantId, slug])
+  @@index([tenantId])
 }
 
 model EventForm {
@@ -245,21 +276,21 @@ model EventForm {
   event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   formId Int
-  form   Form  @relation(fields: [formId], references: [id], onDelete: Cascade)
+  form   Form @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   isPrimary Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([eventId, formId])
   @@index([eventId])
   @@index([formId])
-  @@unique([eventId, formId])
 }
 
-/*
-  Stripe Subscriptions
-*/
+/**
+ * Stripe Subscriptions
+ */
 
 model Subscription {
   id Int @id @default(autoincrement())
@@ -277,7 +308,7 @@ model Subscription {
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   cancelAt           DateTime?
-  cancelAtPeriodEnd  Boolean  @default(false)
+  cancelAtPeriodEnd  Boolean            @default(false)
   canceledAt         DateTime?
 
   // Convenience-Flag, ob das Abo aktuell "zählt"
@@ -289,24 +320,24 @@ model Subscription {
   @@index([tenantId])
 }
 
-/*
-  API Keys für nicht-interaktive Clients (Mobile / Integrationen)
-*/
+/**
+ * API Keys für nicht-interaktive Clients (Mobile / Integrationen)
+ */
 
 model ApiKey {
-  id        Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  tenantId  Int
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId Int
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   /// Anzeigename für den Key (z. B. "Mobile App Prod", "Integration XY")
-  name      String
+  name String
 
   /// Hash des API-Keys (z. B. SHA-256)
-  keyHash   String
+  keyHash String
 
   /// Ob der Key aktuell verwendet werden darf
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   /// Letzte Verwendung des Keys (z. B. für Auditing / Cleanup)
   lastUsedAt DateTime?

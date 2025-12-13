@@ -256,11 +256,39 @@ Doku: `docs/teilprojekt-2.20-admin-ui-presets-library.md`
 
 ---
 
-## Stand nach Teilprojekt 2.20
+### Teilprojekt 2.22 – Admin – Preset-Versioning & „Preset aktualisieren“ (History) ✅
+**Ziel:** Presets iterativ weiterentwickeln, ohne Historie zu verlieren.  
+**Ergebnis (Auszug):**
+- **Datenmodell:**
+  - Neue Tabelle `FormPresetRevision` (tenant-scoped, `presetId`, `version`, `snapshot`, `createdAt`)
+  - Unique: `@@unique([presetId, version])`
+- **Admin API:**
+  - `GET /api/admin/form-presets/[id]` liefert jetzt zusätzlich `revisions[]` (History-Liste)
+  - `GET /api/admin/form-presets/[id]/revisions/[version]` liefert Snapshot einer älteren Version
+  - `POST /api/admin/form-presets/[id]/update`:
+    - speichert Current Snapshot als Revision (version = alte snapshotVersion)
+    - erzeugt neuen Snapshot aus Form+Fields
+    - bumped `snapshotVersion++`
+    - Transaction + Fehlercodes (u.a. `PRESET_NOT_FOUND`, `FORM_NOT_FOUND`, `TENANT_MISMATCH`, `CONFLICT`)
+- **Admin UI:**
+  - `/admin/presets/[id]` zeigt Current + Historie (klickbare Versionen; `?v=...`)
+  - Revision-Ansicht lädt Snapshot per API und berechnet Summary/FieldCount lokal
+  - Button „Preset aktualisieren“ inkl. Modal (Quelle Formular) + Success Notice
+- **DX:**
+  - Workaround für Next 16 / Turbopack Sourcemap/`searchParams` Edge-Case (robuster Query-Read)
+  - Fallback-Loading für Forms-Dropdown (`/api/admin/forms?limit=200` → fallback `/api/admin/forms`)
 
-- Presets sind end-to-end nutzbar:
+Doku: `docs/teilprojekt-2.22-preset-versioning-update.md`
+
+---
+
+## Stand nach Teilprojekt 2.22
+
+- Presets sind end-to-end nutzbar (inkl. Versionierung):
   - Preset erstellen (aus Formular speichern)
-  - Formular aus Preset erstellen (`/admin/forms/new`)
   - Preset Library: Liste, Filter, Preview, Delete (`/admin/presets`)
+  - Formular aus Preset erstellen (`/admin/forms/new`)
+  - Preset aktualisieren (neue Current-Version) + History bleibt abrufbar
+  - Versions-Preview via `?v=` inkl. Raw JSON und Feldliste
 - API ist tenant-sicher und liefert konsistente Fehler.
 - Next.js 16 / Turbopack Besonderheit berücksichtigt: `headers()`, `params`, `searchParams` können Promise sein.

@@ -11,7 +11,12 @@ export type ApiErrorCode =
   | "NOT_FOUND"
   | "BAD_REQUEST"
   | "CONFLICT"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  // Preset Versioning (2.22)
+  | "PRESET_NOT_FOUND"
+  | "FORM_NOT_FOUND"
+  | "TENANT_MISMATCH"
+  | "UNEXPECTED_ERROR";
 
 export function jsonError(
   status: number,

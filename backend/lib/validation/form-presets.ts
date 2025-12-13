@@ -12,5 +12,11 @@ export const zCreateFormFromPresetRequest = z.object({
   name: z.string().trim().min(1).max(120).optional().nullable(),
 });
 
+// 2.22: Preset Update from Form
+export const zUpdatePresetFromFormRequest = z.object({
+  formId: z.number().int().positive(),
+});
+
 export type CreatePresetRequestInput = z.infer<typeof zCreatePresetRequest>;
 export type CreateFormFromPresetRequestInput = z.infer<typeof zCreateFormFromPresetRequest>;
+export type UpdatePresetFromFormRequestInput = z.infer<typeof zUpdatePresetFromFormRequest>;
