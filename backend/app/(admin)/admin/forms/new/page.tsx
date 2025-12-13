@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import FormCreateFromPresetClient from './FormCreateFromPresetClient'
 import type { PresetItem } from './types'
 import { prisma } from '@/lib/prisma'
@@ -33,5 +34,25 @@ export default async function AdminFormNewPage() {
     fieldCount: snapshotFieldCount(p.snapshot),
   }))
 
-  return <FormCreateFromPresetClient initialPresets={initialPresets} />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Neues Formular</h1>
+          <p className="text-sm text-slate-600">
+            Wähle eine Vorlage (Preset) als Ausgangspunkt oder verwalte deine Vorlagen in der Library.
+          </p>
+        </div>
+
+        <Link
+          href="/admin/presets"
+          className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+        >
+          Zur Vorlagen-Library
+        </Link>
+      </div>
+
+      <FormCreateFromPresetClient initialPresets={initialPresets} />
+    </div>
+  )
 }

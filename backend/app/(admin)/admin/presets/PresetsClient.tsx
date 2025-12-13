@@ -205,6 +205,7 @@ export default function PresetsClient({
                 <th className="px-4 py-3">Kategorie</th>
                 <th className="px-4 py-3">Felder</th>
                 <th className="px-4 py-3">Erstellt</th>
+                <th className="px-4 py-3">Aktualisiert</th>
                 <th className="px-4 py-3 text-right">Aktionen</th>
               </tr>
             </thead>
@@ -222,6 +223,7 @@ export default function PresetsClient({
                   <td className="px-4 py-3">{p.category}</td>
                   <td className="px-4 py-3">{p.fieldCount}</td>
                   <td className="px-4 py-3">{formatDate(p.createdAt)}</td>
+                  <td className="px-4 py-3">{formatDate(p.updatedAt)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-2">
                       <Link
@@ -247,7 +249,7 @@ export default function PresetsClient({
           </table>
 
           <div className="border-t bg-gray-50 px-4 py-3 text-xs text-gray-600">
-            Tipp: “Preview” führt zur Detailseite (kommt in Block 3).
+            Tipp: “Preview” führt zur Detailseite.
           </div>
         </div>
       )}

@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import PresetsClient from "./PresetsClient";
 import type { GetPresetsResponse } from "@/lib/types/form-presets";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "LeadRadar – Vorlagen",
+};
 
 type SearchParams = Record<string, string | string[] | undefined>;
 type HeadersType = Awaited<ReturnType<typeof headers>>;
