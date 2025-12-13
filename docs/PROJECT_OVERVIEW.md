@@ -217,19 +217,50 @@ Doku: `docs/teilprojekt-2.17-admin-formbuilder-kontakt-slot-mapping.md`
 
 ---
 
-## Stand nach Teilprojekt 2.17
-
-- Der Admin-Formbuilder kann den Kontaktblock pro Formular **konfigurierbar** mappen (Firma/Vorname/Nachname/Telefon/E-Mail/Notizen).
-- Bestehende Formulare brechen nicht: fehlt Mapping → Fallback (Auto/Heuristik).
-- Persistenz über `Form.config` (JSON) – Migration vorhanden.
-- DnD im Builder ist SSR-stabil (keine Hydration-Warnings).
-
----
-
 ### Teilprojekt 2.18 – Admin-Formbuilder – Design Kit (Theme/Branding) ✅
-- Form.config.theme eingeführt (Defaults + Normalisierung)
+- `Form.config.theme` eingeführt (Defaults + Normalisierung)
 - Validation: theme = object | null, Hex-Farben validiert
 - Admin-UI: Neuer Tab „Design“ (Color Picker + Font + Logo URL)
 - Live Preview im Tablet-Layout; Speichern & Reset; Default => theme:null (clear)
 
+---
 
+### Teilprojekt 2.19 – Admin-Formbuilder – Presets/Vorlagen (Form speichern & daraus neu erstellen) ✅
+- Prisma Model `FormPreset` inkl. `tenantId`, `name`, `category`, `description`, `snapshotVersion`, `snapshot`
+- Admin API:
+  - `GET/POST /api/admin/form-presets`
+  - `POST /api/admin/forms/from-preset` (Formular aus Vorlage erstellen)
+- Admin-UI:
+  - Preset als Vorlage speichern aus dem Formbuilder (inkl. Kategorie)
+  - `/admin/forms/new` kann aus Preset ein neues Formular erzeugen
+
+---
+
+### Teilprojekt 2.20 – Admin-UI – Preset Library & Management (Preview, Löschen, Suche) ✅
+- Neue Seite: `/admin/presets`
+  - Liste (Name, Kategorie, FieldCount, CreatedAt)
+  - Suche (`q`) + Kategorie-Filter (`category`) via URL Query Params
+  - Empty-State + CTA „Preset erstellen“ (führt zu `/admin/forms`)
+  - Delete mit Confirm + Refresh
+- Preview:
+  - Detailseite `/admin/presets/[id]` mit Meta, Feldliste aus `snapshotSummary`, Snapshot-Info (theme/contactSlots) + optional Raw JSON
+- API-Erweiterungen:
+  - `GET /api/admin/form-presets` unterstützt `q`, `category`, optional `page`/`limit`, liefert zusätzlich `categories[]` (Facet)
+  - `GET /api/admin/form-presets/[id]` (inkl. snapshot + snapshotSummary)
+  - `DELETE /api/admin/form-presets/[id]` tenant-scoped
+  - Konsistentes Error-Format: `{ error, code, details? }`
+- Navigation:
+  - Sidebar Menüpunkt „Vorlagen“ → `/admin/presets` inkl. Active-State für Detailroute
+
+Doku: `docs/teilprojekt-2.20-admin-ui-presets-library.md`
+
+---
+
+## Stand nach Teilprojekt 2.20
+
+- Presets sind end-to-end nutzbar:
+  - Preset erstellen (aus Formular speichern)
+  - Formular aus Preset erstellen (`/admin/forms/new`)
+  - Preset Library: Liste, Filter, Preview, Delete (`/admin/presets`)
+- API ist tenant-sicher und liefert konsistente Fehler.
+- Next.js 16 / Turbopack Besonderheit berücksichtigt: `headers()`, `params`, `searchParams` können Promise sein.

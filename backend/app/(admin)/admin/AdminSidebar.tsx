@@ -23,6 +23,12 @@ const navItems: NavItem[] = [
       pathname === '/admin/forms' || pathname.startsWith('/admin/forms/'),
   },
   {
+    label: 'Vorlagen',
+    href: '/admin/presets',
+    isActive: (pathname) =>
+      pathname === '/admin/presets' || pathname.startsWith('/admin/presets/'),
+  },
+  {
     label: 'Events',
     href: '/admin/events',
     isActive: (pathname) =>

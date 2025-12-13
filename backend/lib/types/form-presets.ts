@@ -15,8 +15,22 @@ export type FormPresetListItem = {
   updatedAt: string; // ISO
 };
 
+export type PresetCategoryFacet = {
+  category: string;
+  count: number;
+};
+
+export type PresetsMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+};
+
 export type GetPresetsResponse = {
   presets: FormPresetListItem[];
+  categories?: PresetCategoryFacet[];
+  meta?: PresetsMeta;
 };
 
 export type CreatePresetRequest = {
@@ -26,8 +40,49 @@ export type CreatePresetRequest = {
   description?: string;
 };
 
+/**
+ * POST /api/admin/form-presets
+ */
 export type CreatePresetResponse = {
-  presetId: number;
+  preset: {
+    id: number;
+    name: string;
+    category: string;
+    snapshotVersion: number;
+  };
+};
+
+/**
+ * GET /api/admin/form-presets/[id]
+ */
+export type FormPresetFieldSummary = {
+  order: number;
+  label: string;
+  key: string;
+  type: string;
+  required: boolean;
+  active: boolean;
+};
+
+export type GetPresetResponse = {
+  preset: {
+    id: number;
+    name: string;
+    category: string;
+    description: string | null;
+    snapshotVersion: number;
+    createdAt: string; // ISO
+    updatedAt: string; // ISO
+    fieldCount: number;
+    snapshotInfo?: {
+      hasTheme: boolean;
+      hasContactSlots: boolean;
+    };
+    snapshot: unknown;
+    snapshotSummary?: {
+      fields: FormPresetFieldSummary[];
+    };
+  };
 };
 
 /**
