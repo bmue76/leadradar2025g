@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import {
   DndContext,
   PointerSensor,
@@ -78,7 +79,10 @@ type ThemeDraft = {
 };
 
 const THEME_COLOR_FIELDS: Array<{
-  key: keyof Pick<ThemeDraft, 'background' | 'surface' | 'primary' | 'text' | 'muted' | 'border'>;
+  key: keyof Pick<
+    ThemeDraft,
+    'background' | 'surface' | 'primary' | 'text' | 'muted' | 'border'
+  >;
   label: string;
   hint: string;
 }> = [
@@ -97,6 +101,14 @@ const FONT_FAMILY_OPTIONS = [
   { value: 'Oxygen', label: 'Oxygen' },
   { value: 'Arial', label: 'Arial' },
 ];
+
+type PresetToastPayload = {
+  message: string;
+  presetId: number | null;
+  createdAt: number;
+};
+
+const PRESET_TOAST_STORAGE_KEY = 'leadradar:presetSavedToast:v1';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -167,8 +179,8 @@ function normalizeFields(fieldsInput: unknown): FormFieldLike[] {
       typeof f?.isActive === 'boolean'
         ? f.isActive
         : typeof f?.active === 'boolean'
-        ? f.active
-        : true;
+          ? f.active
+          : true;
 
     return {
       ...f,
@@ -203,14 +215,14 @@ function sortFields(fields: FormFieldLike[]): FormFieldLike[] {
         typeof a.f.id === 'number'
           ? (a.f.id as number)
           : typeof a.f.id === 'string'
-          ? Number.parseInt(a.f.id as string, 10) || 0
-          : 0;
+            ? Number.parseInt(a.f.id as string, 10) || 0
+            : 0;
       const bid =
         typeof b.f.id === 'number'
           ? (b.f.id as number)
           : typeof b.f.id === 'string'
-          ? Number.parseInt(b.f.id as string, 10) || 0
-          : 0;
+            ? Number.parseInt(b.f.id as string, 10) || 0
+            : 0;
 
       if (aid !== bid) return aid - bid;
       return a.index - b.index;
@@ -353,7 +365,11 @@ function isValidHexColor(value: string): boolean {
   const t = (value ?? '').trim();
   if (!t) return false;
   const s = t.startsWith('#') ? t.slice(1) : t;
-  return /^[0-9a-fA-F]{3}$/.test(s) || /^[0-9a-fA-F]{6}$/.test(s) || /^[0-9a-fA-F]{8}$/.test(s);
+  return (
+    /^[0-9a-fA-F]{3}$/.test(s) ||
+    /^[0-9a-fA-F]{6}$/.test(s) ||
+    /^[0-9a-fA-F]{8}$/.test(s)
+  );
 }
 
 function normalizeHex(value: string): string {
@@ -399,6 +415,51 @@ function shallowEqualThemeDraft(a: ThemeDraft, b: ThemeDraft): boolean {
     if ((a[k] ?? '').toString() !== (b[k] ?? '').toString()) return false;
   }
   return true;
+}
+
+function readPresetToastFromStorage(): PresetToastPayload | null {
+  try {
+    const raw = window.sessionStorage.getItem(PRESET_TOAST_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPlainObject(parsed)) return null;
+
+    const message = typeof parsed.message === 'string' ? parsed.message : null;
+    const createdAt =
+      typeof parsed.createdAt === 'number' && Number.isFinite(parsed.createdAt)
+        ? parsed.createdAt
+        : null;
+
+    let presetId: number | null = null;
+    if (typeof parsed.presetId === 'number' && Number.isFinite(parsed.presetId)) {
+      presetId = parsed.presetId;
+    } else if (parsed.presetId === null) {
+      presetId = null;
+    }
+
+    if (!message || !createdAt) return null;
+
+    return { message, presetId, createdAt };
+  } catch {
+    return null;
+  }
+}
+
+function writePresetToastToStorage(payload: PresetToastPayload) {
+  try {
+    window.sessionStorage.setItem(PRESET_TOAST_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore
+  }
+}
+
+function clearPresetToastStorage() {
+  try {
+    window.sessionStorage.removeItem(PRESET_TOAST_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
@@ -487,7 +548,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
   }, [themeDraft]);
 
   // ---------------------------------------------------------------------------
-  // Preset Dialog (Teilprojekt 2.19)
+  // Preset Dialog (UX Teilprojekt 2.21)
   // ---------------------------------------------------------------------------
   const [isPresetDialogOpen, setIsPresetDialogOpen] = React.useState(false);
   const [presetName, setPresetName] = React.useState('');
@@ -495,7 +556,66 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
   const [presetDescription, setPresetDescription] = React.useState('');
   const [isSavingPreset, setIsSavingPreset] = React.useState(false);
   const [presetSaveError, setPresetSaveError] = React.useState<string | null>(null);
-  const [presetToast, setPresetToast] = React.useState<string | null>(null);
+
+  // Split-Button Menu
+  const [isPresetMenuOpen, setIsPresetMenuOpen] = React.useState(false);
+  const presetMenuRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Toast mit Links + Persistenz
+  const [presetToast, setPresetToast] = React.useState<PresetToastPayload | null>(null);
+
+  React.useEffect(() => {
+    const stored = readPresetToastFromStorage();
+    if (!stored) return;
+
+    const maxAgeMs = 5 * 60 * 1000;
+    if (Date.now() - stored.createdAt > maxAgeMs) {
+      clearPresetToastStorage();
+      return;
+    }
+
+    setPresetToast(stored);
+    clearPresetToastStorage();
+  }, []);
+
+  React.useEffect(() => {
+    if (!presetToast) return;
+    const t = window.setTimeout(() => setPresetToast(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [presetToast]);
+
+  function showPresetSavedToast(presetId: number | null) {
+    const payload: PresetToastPayload = {
+      message: 'Vorlage gespeichert.',
+      presetId,
+      createdAt: Date.now(),
+    };
+    setPresetToast(payload);
+    writePresetToastToStorage(payload);
+  }
+
+  React.useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (!isPresetMenuOpen) return;
+      const el = presetMenuRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) {
+        setIsPresetMenuOpen(false);
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (!isPresetMenuOpen) return;
+      if (e.key === 'Escape') setIsPresetMenuOpen(false);
+    }
+
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isPresetMenuOpen]);
 
   function getCurrentFormName(): string {
     return (
@@ -576,11 +696,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
       setIsSavingPreset(false);
       closePresetDialog();
 
-      const toast = newPresetId
-        ? `Vorlage gespeichert (ID ${newPresetId}).`
-        : 'Vorlage gespeichert.';
-      setPresetToast(toast);
-      window.setTimeout(() => setPresetToast(null), 2500);
+      showPresetSavedToast(newPresetId);
     } catch (err) {
       console.error(err);
       setPresetSaveError(
@@ -596,7 +712,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     setIsOrderDirty(false);
   }, [props.fields, props.initialFields]);
 
-  // Kontakt-Slots synchronisieren, wenn Form wechselt / neu geladen wird
+  // Kontakt-Slots synchronisieren
   React.useEffect(() => {
     setContactSlotsDraft(initialContactSlots);
     setContactSlotsBaseline(initialContactSlots);
@@ -605,7 +721,7 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
     setContactSaveSuccess(false);
   }, [initialContactSlots]);
 
-  // Theme synchronisieren, wenn Form wechselt / neu geladen wird
+  // Theme synchronisieren
   React.useEffect(() => {
     setThemeDraft(initialThemeDraft);
     setThemeBaseline(initialThemeDraft);
@@ -1094,6 +1210,18 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
               <div className="text-xs text-slate-500">
                 Tenant-scope: Vorlage ist nur in deinem Tenant sichtbar.
               </div>
+
+              <div className="text-xs text-slate-500">
+                Vorlagen findest du unter{' '}
+                <Link
+                  href="/admin/presets"
+                  className="font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
+                  onClick={() => closePresetDialog()}
+                >
+                  /admin/presets
+                </Link>
+                .
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
@@ -1134,22 +1262,77 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
               </span>
             )}
 
-            <button
-              type="button"
-              onClick={openPresetDialog}
-              className="inline-flex items-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
-              title="Speichert das Formular als Vorlage (Snapshot)"
-            >
-              Als Vorlage speichern
-            </button>
+            {/* Prominenter CTA: Split Button + Dropdown Shortcut */}
+            <div className="relative" ref={presetMenuRef}>
+              <div className="inline-flex rounded-md shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPresetMenuOpen(false);
+                    openPresetDialog();
+                  }}
+                  className="inline-flex items-center rounded-l-md bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  title="Speichert das Formular als Vorlage (Snapshot)"
+                >
+                  Als Vorlage speichern
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPresetMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={isPresetMenuOpen}
+                  className="inline-flex items-center rounded-r-md bg-sky-600 px-2 py-2 text-xs font-semibold text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  title="Weitere Aktionen"
+                >
+                  ▾
+                </button>
+              </div>
+
+              {isPresetMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-60 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsPresetMenuOpen(false);
+                      openPresetDialog();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-800 hover:bg-slate-50"
+                  >
+                    <span className="font-medium">Als Vorlage speichern</span>
+                    <span className="text-[11px] text-slate-500">(Modal öffnen)</span>
+                  </button>
+
+                  <Link
+                    role="menuitem"
+                    href="/admin/presets"
+                    onClick={() => setIsPresetMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-slate-800 hover:bg-slate-50"
+                  >
+                    <span className="font-medium">Zur Vorlagen-Library</span>
+                    <span className="text-[11px] text-slate-500">/admin/presets</span>
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {presetToast && (
-          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-            {presetToast}
-          </div>
-        )}
+        {/* Always-visible guidance */}
+        <div className="mt-2 text-xs text-slate-500">
+          Vorlagen findest du unter{' '}
+          <Link
+            href="/admin/presets"
+            className="font-medium text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800"
+          >
+            /admin/presets
+          </Link>
+          .
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
@@ -1560,8 +1743,8 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
                       typeof raw === 'undefined'
                         ? '__auto__'
                         : typeof raw === 'number'
-                        ? String(raw)
-                        : '__auto__';
+                          ? String(raw)
+                          : '__auto__';
 
                     return (
                       <div
@@ -1824,6 +2007,59 @@ export default function FormBuilderWorkspace(props: FormBuilderWorkspaceProps) {
           </div>
         </section>
       </div>
+
+      {/* Toast (Bottom Right) */}
+      {presetToast && (
+        <div className="fixed bottom-4 right-4 z-50 w-[min(420px,calc(100vw-2rem))]">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 shadow-lg">
+            <div className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-emerald-900">
+                  {presetToast.message}
+                </div>
+                <div className="mt-1 text-xs text-emerald-800">
+                  Vorlagen verwaltest du in der Library.
+                  {typeof presetToast.presetId === 'number' ? (
+                    <span className="ml-2 text-emerald-900/80">
+                      (ID #{presetToast.presetId})
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Link
+                    href="/admin/presets"
+                    className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                    onClick={() => setPresetToast(null)}
+                  >
+                    Zur Vorlagen-Library
+                  </Link>
+
+                  {typeof presetToast.presetId === 'number' && (
+                    <Link
+                      href={`/admin/presets/${presetToast.presetId}`}
+                      className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                      onClick={() => setPresetToast(null)}
+                    >
+                      Preset öffnen
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => setPresetToast(null)}
+                aria-label="Toast schließen"
+                title="Schließen"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -256,6 +256,10 @@ Doku: `docs/teilprojekt-2.20-admin-ui-presets-library.md`
 
 ---
 
+- **Teilprojekt 2.21:** Preset-Save UX im Formbuilder verbessert (prominenter „Als Vorlage speichern“-Split-Button, Toast mit Links zur Library + optional Preset-Detail, Guidance-Link zu `/admin/presets`, Toast-Persistenz via sessionStorage).
+
+---
+
 ### Teilprojekt 2.22 – Admin – Preset-Versioning & „Preset aktualisieren“ (History) ✅
 **Ziel:** Presets iterativ weiterentwickeln, ohne Historie zu verlieren.  
 **Ergebnis (Auszug):**
