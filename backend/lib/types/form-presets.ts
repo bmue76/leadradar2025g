@@ -177,3 +177,35 @@ export type RollbackPresetResponse = {
   };
   revisions: FormPresetRevisionListItemDTO[];
 };
+
+/**
+ * 2.23B – Preset Import/Export (JSON) – Format v1
+ */
+export type PresetExportV1 = {
+  format: "leadradar-form-preset";
+  formatVersion: 1;
+  exportedAt: string; // ISO datetime
+  preset: {
+    name: string;
+    category?: string;
+    description?: string;
+    snapshotVersion: number;
+    snapshot: unknown; // Snapshot JSON
+  };
+  revisions?: Array<{
+    version: number;
+    snapshot: unknown;
+    createdAt?: string; // optional (Info)
+  }>;
+};
+
+/**
+ * 2.23B – Import Response DTO
+ * POST /api/admin/form-presets/import
+ */
+export type ImportPresetResponse = {
+  presetId: number;
+  name: string;
+  snapshotVersion: number;
+  importedRevisionsCount: number;
+};

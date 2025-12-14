@@ -304,15 +304,39 @@ Doku: `docs/teilprojekt-2.23A-preset-rollback-audit.md`
 
 ---
 
-## Stand nach Teilprojekt 2.23A
+### Teilprojekt 2.23B – Admin – Preset Import/Export (JSON) ✅
+**Ziel:** Presets zwischen Instanzen/Tenants portieren (Download/Upload), ohne Copy/Paste.  
+**Ergebnis (Auszug):**
+- **Contract (versioniert):**
+  - `PresetExportV1` mit `format="leadradar-form-preset"`, `formatVersion=1`, `exportedAt`, `preset`, optional `revisions[]`
+- **Limits:**
+  - Max JSON: 2MB (`PRESET_IMPORT_MAX_BYTES`)
+  - Max Revisions: 50 (`PRESET_IMPORT_MAX_REVISIONS`)
+- **Admin API:**
+  - `GET /api/admin/form-presets/[id]/export`
+    - Download JSON (Attachment), optional `?includeRevisions=1`
+  - `POST /api/admin/form-presets/import`
+    - Validiert JSON (Zod) + Limits
+    - Erstellt **immer ein neues Preset** im aktuellen Tenant
+    - Importiert optional Revisions (createMany) + setzt `createdByUserId` auf Import-User
+  - Fehlercodes: `INVALID_IMPORT_JSON`, `IMPORT_TOO_LARGE`, `IMPORT_REVISION_LIMIT`
+- **Admin UI:**
+  - Detailseite `/admin/presets/[id]`: Export-Block (Checkbox „inkl. Versionen“ + Button „Export JSON“)
+  - Library `/admin/presets`: Button „Import JSON“ + Modal (File Upload, Loading, Errors, Success-Link „Preset öffnen“)
 
-- Presets sind end-to-end nutzbar (inkl. Versionierung + Rollback):
+Doku: `docs/teilprojekt-2.23B-preset-import-export.md`
+
+---
+
+## Stand nach Teilprojekt 2.23B
+
+- Presets sind end-to-end nutzbar (inkl. Versionierung + Rollback + Portierung):
   - Preset erstellen (aus Formular speichern)
   - Preset Library: Liste, Filter, Preview, Delete (`/admin/presets`)
   - Formular aus Preset erstellen (`/admin/forms/new`)
   - Preset aktualisieren (neue Current-Version) + History bleibt abrufbar
   - Rollback von Revisionen erzeugt neue Current-Version und schreibt Historie korrekt fort
-  - Versions-Preview via `?v=` inkl. Raw JSON und Feldliste
-  - Audit-Info (`createdByUserId`) ist in der Versionsliste sichtbar, wenn vorhanden
+  - Preset Export als JSON (optional inkl. Revisions)
+  - Preset Import aus JSON erzeugt neues Preset tenant-safe, inkl. optionaler Revisions
 - API ist tenant-sicher und liefert konsistente Fehler.
 - Next.js 16 / Turbopack Besonderheit berücksichtigt: `headers()`, `params`, `searchParams` können Promise sein.

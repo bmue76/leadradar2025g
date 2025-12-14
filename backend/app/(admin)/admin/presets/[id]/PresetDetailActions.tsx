@@ -56,6 +56,29 @@ async function fetchFormsWithFallback(
   return { ok: false, error: lastError };
 }
 
+function parseFilenameFromContentDisposition(v: string | null): string | null {
+  if (!v) return null;
+
+  // simple: attachment; filename="preset-2-20251214-0012.json"
+  const m = v.match(/filename\*?=(?:UTF-8''|")?([^";]+)"/i) || v.match(/filename\*?=(?:UTF-8''|)?([^;]+)/i);
+  if (!m) return null;
+
+  let name = String(m[1] ?? "").trim();
+  name = name.replace(/^"+|"+$/g, "");
+
+  try {
+    // filename*=UTF-8''... might be URL encoded
+    name = decodeURIComponent(name);
+  } catch {
+    // ignore
+  }
+
+  if (!name) return null;
+  // avoid path traversal in weird cases
+  name = name.split("/").pop()!.split("\\").pop()!;
+  return name || null;
+}
+
 export default function PresetDetailActions({
   presetId,
   viewKind,
@@ -71,6 +94,10 @@ export default function PresetDetailActions({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+
+  // Export
+  const [exportBusy, setExportBusy] = useState(false);
+  const [includeRevisions, setIncludeRevisions] = useState(false);
 
   // Update Modal
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -144,6 +171,56 @@ export default function PresetDetailActions({
       setFormsLoading(false);
     })();
   }, [updateOpen, forms.length, headers]);
+
+  async function onExportJson() {
+    setExportBusy(true);
+    setNotice(null);
+
+    try {
+      const url = `/api/admin/form-presets/${presetId}/export${
+        includeRevisions ? "?includeRevisions=1" : ""
+      }`;
+
+      const res = await fetch(url, {
+        method: "GET",
+        headers,
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        setNotice({
+          kind: "error",
+          message: `Export fehlgeschlagen (${res.status}). ${txt}`,
+        });
+        return;
+      }
+
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition");
+      const filename =
+        parseFilenameFromContentDisposition(cd) || `preset-${presetId}.json`;
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(objectUrl);
+
+      setNotice({
+        kind: "success",
+        message: includeRevisions
+          ? "Export JSON erstellt (inkl. Versionen)."
+          : "Export JSON erstellt.",
+      });
+    } catch (e: any) {
+      setNotice({ kind: "error", message: e?.message ?? String(e) });
+    } finally {
+      setExportBusy(false);
+    }
+  }
 
   async function onDelete() {
     const ok = window.confirm("Willst du diese Vorlage wirklich löschen?");
@@ -224,7 +301,9 @@ export default function PresetDetailActions({
   async function onRollback() {
     if (viewKind !== "revision") return;
 
-    const ok = window.confirm(`Rollback wirklich ausführen?\n\nEs wird eine neue Current-Version erzeugt (snapshotVersion++).\nRollback auf: v${viewVersion}`);
+    const ok = window.confirm(
+      `Rollback wirklich ausführen?\n\nEs wird eine neue Current-Version erzeugt (snapshotVersion++).\nRollback auf: v${viewVersion}`,
+    );
     if (!ok) return;
 
     setRollbackBusy(true);
@@ -254,10 +333,7 @@ export default function PresetDetailActions({
 
       const n: Notice = {
         kind: "success",
-        message:
-          typeof newVersion === "number"
-            ? `Rollback erstellt: v${newVersion}`
-            : "Rollback erstellt.",
+        message: typeof newVersion === "number" ? `Rollback erstellt: v${newVersion}` : "Rollback erstellt.",
       };
       persistNotice(n);
 
@@ -271,7 +347,7 @@ export default function PresetDetailActions({
     }
   }
 
-  const anyBusy = busy || updateBusy || rollbackBusy;
+  const anyBusy = busy || updateBusy || rollbackBusy || exportBusy;
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -281,6 +357,35 @@ export default function PresetDetailActions({
       >
         Zurück
       </Link>
+
+      {/* Export */}
+      <div className="flex flex-col items-end gap-1 rounded border bg-white px-3 py-2">
+        <div className="text-xs font-medium text-gray-700">Export</div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={includeRevisions}
+            onChange={(e) => setIncludeRevisions(e.target.checked)}
+            disabled={anyBusy}
+          />
+          inkl. Versionen
+        </label>
+
+        <button
+          type="button"
+          disabled={anyBusy}
+          onClick={onExportJson}
+          className="mt-1 inline-flex items-center justify-center rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+          title="Preset als JSON exportieren (Download)"
+        >
+          {exportBusy ? "Exportiere…" : "Export JSON"}
+        </button>
+
+        <div className="mt-1 text-[11px] text-gray-500">
+          Hinweis: Import erzeugt immer ein neues Preset.
+        </div>
+      </div>
 
       <Link
         href="/admin/forms/new"
@@ -326,7 +431,7 @@ export default function PresetDetailActions({
 
       {notice ? (
         <div
-          className={`mt-1 max-w-[280px] rounded border px-2 py-1 text-xs ${
+          className={`mt-1 max-w-[320px] rounded border px-2 py-1 text-xs ${
             notice.kind === "success"
               ? "border-green-200 bg-green-50 text-green-700"
               : "border-red-200 bg-red-50 text-red-700"

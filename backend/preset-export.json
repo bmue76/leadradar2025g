@@ -1,0 +1,424 @@
+{
+  "format": "leadradar-form-preset",
+  "formatVersion": 1,
+  "exportedAt": "2025-12-13T23:53:21.075Z",
+  "preset": {
+    "name": "Test-Vorlage 2",
+    "category": "Standard",
+    "snapshotVersion": 8,
+    "snapshot": {
+      "form": {
+        "name": "Test-Vorlage 2",
+        "title": null,
+        "config": {
+          "theme": {
+            "text": "#1c49ce",
+            "muted": "#64748b",
+            "border": "#e2e8f0",
+            "logoUrl": "",
+            "primary": "#a2e70d",
+            "surface": "#d73c3c",
+            "background": "#1c73ca",
+            "fontFamily": "System"
+          },
+          "contactSlots": {
+            "email": 3,
+            "company": null
+          }
+        },
+        "status": "DRAFT",
+        "description": "Beispiel-Formular für Messen, um Leads zu erfassen."
+      },
+      "fields": [
+        {
+          "key": "email",
+          "type": "EMAIL",
+          "label": "E-Mail",
+          "order": 1,
+          "helpText": null,
+          "isActive": true,
+          "required": true,
+          "placeholder": null
+        },
+        {
+          "key": "lastName",
+          "type": "TEXT",
+          "label": "Nachname",
+          "order": 2,
+          "helpText": null,
+          "isActive": true,
+          "required": true,
+          "placeholder": null
+        },
+        {
+          "key": "notes",
+          "type": "TEXTAREA",
+          "label": "Notizen",
+          "order": 3,
+          "helpText": null,
+          "isActive": true,
+          "required": false,
+          "placeholder": null
+        },
+        {
+          "key": "firstName",
+          "type": "TEXT",
+          "label": "Vorname",
+          "order": 4,
+          "helpText": null,
+          "isActive": true,
+          "required": true,
+          "placeholder": null
+        },
+        {
+          "key": "phone",
+          "type": "PHONE",
+          "label": "Telefon",
+          "order": 5,
+          "helpText": null,
+          "isActive": false,
+          "required": false,
+          "placeholder": null
+        },
+        {
+          "key": "newsletterOptIn",
+          "type": "CHECKBOX",
+          "label": "Newsletter erhalten",
+          "order": 6,
+          "helpText": null,
+          "isActive": true,
+          "required": false,
+          "placeholder": null
+        }
+      ]
+    }
+  },
+  "revisions": [
+    {
+      "version": 1,
+      "snapshot": {
+        "form": {
+          "name": "Test-Vorlage 2",
+          "title": null,
+          "config": {
+            "theme": {
+              "text": "#1c49ce",
+              "muted": "#64748b",
+              "border": "#e2e8f0",
+              "logoUrl": "",
+              "primary": "#a2e70d",
+              "surface": "#d73c3c",
+              "background": "#1c73ca",
+              "fontFamily": "System"
+            },
+            "contactSlots": {
+              "email": 3,
+              "company": null
+            }
+          },
+          "status": "DRAFT",
+          "description": "Beispiel-Formular für Messen, um Leads zu erfassen."
+        },
+        "fields": [
+          {
+            "key": "email",
+            "type": "EMAIL",
+            "label": "E-Mail",
+            "order": 1,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "lastName",
+            "type": "TEXT",
+            "label": "Nachname",
+            "order": 2,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "notes",
+            "type": "TEXTAREA",
+            "label": "Notizen",
+            "order": 3,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "firstName",
+            "type": "TEXT",
+            "label": "Vorname",
+            "order": 4,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "phone",
+            "type": "PHONE",
+            "label": "Telefon",
+            "order": 5,
+            "helpText": null,
+            "isActive": false,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "newsletterOptIn",
+            "type": "CHECKBOX",
+            "label": "Newsletter erhalten",
+            "order": 6,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          }
+        ]
+      },
+      "createdAt": "2025-12-13T22:19:37.989Z"
+    },
+    {
+      "version": 2,
+      "snapshot": {
+        "form": {
+          "name": "Kontaktformular Messe XY",
+          "title": null,
+          "config": null,
+          "status": "DRAFT",
+          "description": null
+        },
+        "fields": []
+      },
+      "createdAt": "2025-12-13T22:23:13.230Z"
+    },
+    {
+      "version": 3,
+      "snapshot": {
+        "form": {
+          "name": "Kontaktformular Messe XY",
+          "title": null,
+          "config": null,
+          "status": "DRAFT",
+          "description": null
+        },
+        "fields": []
+      },
+      "createdAt": "2025-12-13T22:27:51.493Z"
+    },
+    {
+      "version": 4,
+      "snapshot": {
+        "form": {
+          "name": "Kontaktformular Messe XY",
+          "title": null,
+          "config": null,
+          "status": "DRAFT",
+          "description": null
+        },
+        "fields": []
+      },
+      "createdAt": "2025-12-13T22:28:19.228Z"
+    },
+    {
+      "version": 5,
+      "snapshot": {
+        "form": {
+          "name": "Kontaktformular Messe XY",
+          "title": null,
+          "config": null,
+          "status": "DRAFT",
+          "description": null
+        },
+        "fields": []
+      },
+      "createdAt": "2025-12-13T22:28:37.183Z"
+    },
+    {
+      "version": 6,
+      "snapshot": {
+        "form": {
+          "name": "Test-Fromular",
+          "title": null,
+          "config": {
+            "theme": {
+              "text": "#1c49ce",
+              "muted": "#64748b",
+              "border": "#e2e8f0",
+              "logoUrl": "",
+              "primary": "#a2e70d",
+              "surface": "#d73c3c",
+              "background": "#1c73ca",
+              "fontFamily": "System"
+            },
+            "contactSlots": {
+              "email": 3,
+              "company": null
+            }
+          },
+          "status": "DRAFT",
+          "description": "Beispiel-Formular für Messen, um Leads zu erfassen."
+        },
+        "fields": [
+          {
+            "key": "email",
+            "type": "EMAIL",
+            "label": "E-Mail",
+            "order": 1,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "lastName",
+            "type": "TEXT",
+            "label": "Nachname",
+            "order": 2,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "notes",
+            "type": "TEXTAREA",
+            "label": "Notizen",
+            "order": 3,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "firstName",
+            "type": "TEXT",
+            "label": "Vorname",
+            "order": 4,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "phone",
+            "type": "PHONE",
+            "label": "Telefon",
+            "order": 5,
+            "helpText": null,
+            "isActive": false,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "newsletterOptIn",
+            "type": "CHECKBOX",
+            "label": "Newsletter erhalten",
+            "order": 6,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          }
+        ]
+      },
+      "createdAt": "2025-12-13T23:21:23.179Z"
+    },
+    {
+      "version": 7,
+      "snapshot": {
+        "form": {
+          "name": "Test-Vorlage 2",
+          "title": null,
+          "config": {
+            "theme": {
+              "text": "#1c49ce",
+              "muted": "#64748b",
+              "border": "#e2e8f0",
+              "logoUrl": "",
+              "primary": "#a2e70d",
+              "surface": "#d73c3c",
+              "background": "#1c73ca",
+              "fontFamily": "System"
+            },
+            "contactSlots": {
+              "email": 3,
+              "company": null
+            }
+          },
+          "status": "DRAFT",
+          "description": "Beispiel-Formular für Messen, um Leads zu erfassen."
+        },
+        "fields": [
+          {
+            "key": "email",
+            "type": "EMAIL",
+            "label": "E-Mail",
+            "order": 1,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "lastName",
+            "type": "TEXT",
+            "label": "Nachname",
+            "order": 2,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "notes",
+            "type": "TEXTAREA",
+            "label": "Notizen",
+            "order": 3,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "firstName",
+            "type": "TEXT",
+            "label": "Vorname",
+            "order": 4,
+            "helpText": null,
+            "isActive": true,
+            "required": true,
+            "placeholder": null
+          },
+          {
+            "key": "phone",
+            "type": "PHONE",
+            "label": "Telefon",
+            "order": 5,
+            "helpText": null,
+            "isActive": false,
+            "required": false,
+            "placeholder": null
+          },
+          {
+            "key": "newsletterOptIn",
+            "type": "CHECKBOX",
+            "label": "Newsletter erhalten",
+            "order": 6,
+            "helpText": null,
+            "isActive": true,
+            "required": false,
+            "placeholder": null
+          }
+        ]
+      },
+      "createdAt": "2025-12-13T23:27:12.589Z"
+    }
+  ]
+}

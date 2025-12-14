@@ -19,6 +19,11 @@ export type ApiErrorCode =
   | "REVISION_NOT_FOUND"
   | "INVALID_VERSION"
   | "REVISION_CONFLICT"
+  // Preset Import/Export (2.23B)
+  | "INVALID_IMPORT_JSON"
+  | "IMPORT_TOO_LARGE"
+  | "IMPORT_REVISION_LIMIT"
+  // Generic fallback (legacy)
   | "UNEXPECTED_ERROR";
 
 export function jsonError(
